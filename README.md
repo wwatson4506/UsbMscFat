@@ -13,4 +13,7 @@ Installation:
   Install this library in Arduino/libraries folder.
   
 Examples:
-- benchUSB.ino 
+- benchUSB.ino     Test USB drive read and write speeds.
+- CardInfoUSB.ino  Get USB drive information.
+- copyFilesUSB.ino Copy a 32Meg file between USB drives and both SDIO and External SD cards.
+- copyFile.ino     Demonstrates copying, renameing and deleteing a text file.
