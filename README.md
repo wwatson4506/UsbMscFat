@@ -15,5 +15,8 @@ Installation:
 Examples:
 - benchUSB.ino     Test USB drive read and write speeds.
 - CardInfoUSB.ino  Get USB drive information.
-- copyFilesUSB.ino Copy a 32Meg file between USB drives and both SDIO and External SD cards. The file named '32MEGfile.dat' is supplied in the 'extras' folder. copy it to one of the storage devices. You can then use that to copy between the different storage devices.
+- copyFilesUSB.ino Copy a 32Meg file between USB drives and both SDIO and External SD cards.
+                   The file named '32MEGfile.dat' is supplied in the 'extras' folder.
+                   Copy it to one of the storage devices. You can then use that to copy
+                   between the different storage devices.
 - copyFile.ino     Demonstrates copying, renameing and deleteing a text file.
