@@ -12,4 +12,5 @@ This library should be considered as proof of concept as PJRC is developing a st
 Installation:
   Install this library in Arduino/libraries folder.
   
-Examples
+Examples:
+- benchUSB.ino 
