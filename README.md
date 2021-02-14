@@ -1,26 +1,15 @@
-# mscFS Library
+# UsbMscFat Library
 
-mscFS is a version of SD for use with USB host mass storeage devices and uses the new Teensy File System Abstracion class.
+This Teensy 3.6/4.0/4.1 library allows use of FS and MSC with SdFat.
 
-This library is compatible with SD. It is ment for use with Sdfat and USBHost_t36. It parallels SD and uses FS.h.
-FS.h was not modified but SdFat-parallel had slight modifications to "SdFat.h" and "SdFatConfig.h".
+You will need Arduino 1.8.13 and TeensyDuino 1.54 Beta 6.
 
-Three libraries must be cloned and installed in the TD1.54B5 libraries folder.
+No other changes to FS, MSC or SdFat are needed. SdFat and MSC are now included in TeensyDuino 1.54B6.
+It allows the use of USB mass storage devices along with exsisting SD cards and littleFS.
 
-You will need to backup these two libraries:
+This library should be considered as proof of concept as PJRC is developing a standard interface for storage devices and may not be compatible with future releases of TeensyDuino.
 
-1 - SdFat
-
-2 - USBHost_t36
-
-The two libraries you need with this library are available here:
-
-https://github.com/wwatson4506/SdFat-beta/tree/SdFat-parrallel
-
-https://github.com/wwatson4506/USBHost_t36
-
-The actual MSC library Here:
-
-https://github.com/wwatson4506/MSC
-
-is not needed now with the modified version of USBHost_t36. "MasStorageDriver.cpp" and "msc.h" are now contained in my version of USBHost_t36. "MassStorageHost.cpp" and "MassStorage.h" are still available in the four different version of the MSC library.
+Installation:
+  Install this library in Arduino/libraries folder.
+  
+Examples
