@@ -87,13 +87,15 @@ bool sdCardAvailable(SdFs *sdCard) {
 // Copy a file from one drive to another.
 // Set 'stats' the forth parameter to true to display a progress bar,
 // copy speed and copy time. 
-uint8_t fileCopy(bool stats) {
+int fileCopy(bool stats) {
     int br = 0, bw = 0;          // File read/write count
 	uint32_t bufferSize = 65536; // Buffer size can be adjusted as needed.
 	uint8_t buffer[bufferSize];  // File copy buffer
 	uint32_t cntr = 0;
 	uint32_t start = 0, finish = 0;
 	uint32_t bytesRW = 0;
+	int copyError = 0;
+	
     /* Copy source to destination */
 	start = micros();
     for (;;) {
@@ -104,11 +106,13 @@ uint8_t fileCopy(bool stats) {
 		}
         br = file1.read(buffer, sizeof(buffer));  /* Read a chunk of source file */
         if (br <= 0) {
+			copyError = br;
 			break; /* error or eof */
 		}
         bw = file2.write(buffer, br);            /* Write it to the destination file */
         if (bw < br) {
-			break; /* error or disk full */
+			copyError = bw; /* error or disk full */
+			break;
 		}
 		bytesRW += (uint32_t)bw;
     }
@@ -120,7 +124,7 @@ uint8_t fileCopy(bool stats) {
     float MegaBytes = (bytesRW*1.0f)/(1.0f*finish);
 	if(stats) // If true, display time stats.
 		Serial.printf("\nCopied %u bytes in %f seconds. Speed: %f MB/s\n",bytesRW,(1.0*finish)/1000000.0,MegaBytes);
-	return 0; // Return any errors or success.
+	return copyError; // Return any errors or success.
 }
 
 void listDirectories(void) {
@@ -184,7 +188,7 @@ void setup()
 
 void loop(void) {
 	uint8_t c = 0;
-	uint8_t copyResult = 0;
+	int copyResult = 0;
 
 	Serial.printf("\n------------------------------------------------------------------\n");
 	Serial.printf("Select:\n");
