@@ -20,8 +20,8 @@ Examples:
 - CardInfoUSB.ino	Get USB drive information.
 
 - copyFilesUSB.ino	Copy a 32Meg file between USB drives and both SDIO and External SD cards.
-					The file named '32MEGfile.dat' is supplied in the 'extras' folder.
-					Copy it to one of the storage devices. You can then use that to copy
-					between the different storage devices.
-- copyFile.ino		Demonstrates copying, renameing and deleteing a text file.
+                        The file named '32MEGfile.dat' is supplied in the 'extras' folder.
+                        Copy it to one of the storage devices. You can then use that to copy
+                        between the different storage devices.
+- copyFile.ino          Demonstrates copying, renameing and deleteing a text file.
 
