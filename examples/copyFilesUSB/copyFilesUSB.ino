@@ -54,31 +54,30 @@ FsFile file2;
 const char *file2Copy = "32MEGfile.dat";  // File to copy
 
 //------------------------------------------------------------------------------
-// Check for a connected USB drive and mount if not mounted.
+// Check for a connected USB drive and try to mount if not mounted.
 bool driveAvailable(msController *pDrive,UsbFs *mscVol) {
-Serial.printf("mscVol = %lu\n",mscVol);
 	if(pDrive->checkConnectedInitialized()) {
-		return false;
+		return false; // No USB Drive connected, give up!
 	}
-	if(!mscVol->fatType()) {
-Serial.printf("mscVol = %lu\n",mscVol);
-		return false;
+	if(!mscVol->fatType()) {  // USB drive present try mount it.
+		if (!mscVol->begin(&msDrive1)) {
+			mscVol->initErrorPrint(&Serial); // Could not mount it print reason.
+			return false;
+		}
 	}
 	return true;
 }
 
 //------------------------------------------------------------------------------
-// Check for a inserted SD card and mount if not mounted.
+// Check for a inserted SD card and try to mount if not mounted.
 bool sdCardAvailable(SdFs *sdCard) {
 	if(sdCard == &sdio) {
 		if(!sdCard->begin(SD_CONFIG)) {
-			Serial.printf("\nSDIO card is not available or not mounted\n");
 			return false;
 		}
 	}
 	if(sdCard == &spi) {
 		if(!sdCard->begin(SD_CONFIG1)) {
-			Serial.printf("\nExternal SD card is not available or not mounted\n");
 			return false;
 		}
 	}
@@ -126,13 +125,13 @@ uint8_t fileCopy(bool stats) {
 
 void listDirectories(void) {
 	Serial.printf("-------------------------------------------------\n");
-	Serial.printf("USB drive 1 directory listing:\n");
+	Serial.printf("\nUSB drive 1 directory listing:\n");
 	msc1.ls("/", LS_R | LS_DATE | LS_SIZE);
-	Serial.printf("USB drive 2 directory listing:\n");
+	Serial.printf("\nUSB drive 2 directory listing:\n");
 	msc2.ls("/", LS_R | LS_DATE | LS_SIZE);
-	Serial.printf("SDIO card directory listing:\n");
+	Serial.printf("\nSDIO card directory listing:\n");
 	sdio.ls("/", LS_R | LS_DATE | LS_SIZE);
-	Serial.printf("External SD card directory listing:\n");
+	Serial.printf("\nExternal SD card directory listing:\n");
 	spi.ls("/", LS_R | LS_DATE | LS_SIZE);
 	Serial.printf("-------------------------------------------------\n");
 }
@@ -169,8 +168,6 @@ void setup()
   // Initialize SDIO card
   Serial.print("\nInitializing SDIO card...");
   if (!sdio.begin(SD_CONFIG)) {
-//    if(sdio.sdErrorCode() == SD_CARD_ERROR_ACMD41)
-//      Serial.println("No card, Is SDIO card installed?");
 	sdio.initErrorPrint(&Serial);
   } else {
      Serial.println("SDIO card is present.");
@@ -183,9 +180,6 @@ void setup()
   } else {
      Serial.println("External SD card is present.");
   }
-	Serial.printf("\nPress a key to continue...\n");
-	while(!Serial.available());
-//	c = Serial.read();
 }
 
 void loop(void) {
@@ -194,19 +188,19 @@ void loop(void) {
 
 	Serial.printf("\n------------------------------------------------------------------\n");
 	Serial.printf("Select:\n");
-	Serial.printf("    1) to copy '32MEGfile.dat' from USB drive 1 to USB drive 2.\n");
-	Serial.printf("    2) to copy '32MEGfile.dat' from USB drive 2 to USB drive 1.\n");
-	Serial.printf("    3) to copy '32MEGfile.dat' from USB drive 1 to SDIO card.\n");
-	Serial.printf("    4) to copy '32MEGfile.dat' from USB drive 2 to SDIO card.\n");
-	Serial.printf("    5) to copy '32MEGfile.dat' from USB drive 1 to External SD card.\n");
-	Serial.printf("    6) to copy '32MEGfile.dat' from USB drive 2 to External SD card.\n");
-	Serial.printf("    7) to copy '32MEGfile.dat' from SDIO card to External SD card.\n");
-	Serial.printf("    8) to copy '32MEGfile.dat' from External SD card to SDIO card.\n");
-	Serial.printf("    9) to copy '32MEGfile.dat' from SDIO card to USB drive 1.\n");
-	Serial.printf("    a) to copy '32MEGfile.dat' from SDIO card to USB drive 2.\n");
-	Serial.printf("    b) to copy '32MEGfile.dat' from External SD card to USB drive 1.\n");
-	Serial.printf("    c) to copy '32MEGfile.dat' from External SD card to USB drive 2.\n");
-	Serial.printf("    d) List Directories\n");
+	Serial.printf("   1)  to copy '32MEGfile.dat' from USB drive 1 to USB drive 2.\n");
+	Serial.printf("   2)  to copy '32MEGfile.dat' from USB drive 2 to USB drive 1.\n");
+	Serial.printf("   3)  to copy '32MEGfile.dat' from USB drive 1 to SDIO card.\n");
+	Serial.printf("   4)  to copy '32MEGfile.dat' from USB drive 2 to SDIO card.\n");
+	Serial.printf("   5)  to copy '32MEGfile.dat' from USB drive 1 to External SD card.\n");
+	Serial.printf("   6)  to copy '32MEGfile.dat' from USB drive 2 to External SD card.\n");
+	Serial.printf("   7)  to copy '32MEGfile.dat' from SDIO card to External SD card.\n");
+	Serial.printf("   8)  to copy '32MEGfile.dat' from External SD card to SDIO card.\n");
+	Serial.printf("   9)  to copy '32MEGfile.dat' from SDIO card to USB drive 1.\n");
+	Serial.printf("   a)  to copy '32MEGfile.dat' from SDIO card to USB drive 2.\n");
+	Serial.printf("   b)  to copy '32MEGfile.dat' from External SD card to USB drive 1.\n");
+	Serial.printf("   c)  to copy '32MEGfile.dat' from External SD card to USB drive 2.\n");
+	Serial.printf("   d)  List Directories\n");
 	Serial.printf("------------------------------------------------------------------\n");
 
 	while(!Serial.available());
@@ -214,12 +208,10 @@ void loop(void) {
 	while(Serial.available()) Serial.read(); // Get rid of CR and/or LF if there.
 	switch(c) {
 		case '1':
-			Serial.printf("Checking for USB Drive 1...\n");
 			if(!driveAvailable(&msDrive1, &msc1)) {
 				Serial.printf("USB Drive 1 is not connected or not mountable\n");
 				break;
 			}
-			Serial.printf("Checking for USB Drive 2...\n");
 			if(!driveAvailable(&msDrive2, &msc2)) {
 				Serial.printf("USB Drive 2 is not connected or not mountable\n");
 				break;
@@ -242,11 +234,11 @@ void loop(void) {
 			break;
 		case '2':
 			if(!driveAvailable(&msDrive2, &msc2)) {
-				Serial.printf("USB Drive 2 is not connected\n");
+				Serial.printf("USB Drive 2 is not connected or not mountable\n");
 				break;
 			}
 			if(!driveAvailable(&msDrive1, &msc1)) {
-				Serial.printf("USB Drive 1 is not connected\n");
+				Serial.printf("USB Drive 1 is not connected or not mountable\n");
 				break;
 			}
 			Serial.printf("\n2) Copying from USB drive 2 to USB drive 1\n");
@@ -266,7 +258,14 @@ void loop(void) {
 			}
 			break;
 		case '3':
-			if(!driveAvailable(&msDrive1, &msc1) || !sdCardAvailable(&sdio)) break; // Is the drive available and mounted?
+			if(!driveAvailable(&msDrive1, &msc1)) {
+				Serial.printf("USB Drive 1 is not connected or not mountable\n");
+				break;
+			}
+			if(!sdCardAvailable(&sdio)) {
+				Serial.printf("SDIO card is not inserted or not mountable\n");
+				break;
+			}
 			Serial.printf("\n3) Copying from USB drive 1 to SDIO card\n");
 			/* Open source file */
 			if(!file1.open(&msc1,file2Copy, O_RDONLY)) {
@@ -284,7 +283,14 @@ void loop(void) {
 			}
 			break;
 		case '4':
-			if(!driveAvailable(&msDrive2, &msc2) || !sdCardAvailable(&sdio)) break; // Is the drive available and mounted?
+			if(!driveAvailable(&msDrive2, &msc2)) {
+				Serial.printf("USB Drive 2 is not connected or not mountable\n");
+				break;
+			}
+			if(!sdCardAvailable(&sdio)) {
+				Serial.printf("SDIO card is not inserted or not mountable\n");
+				break;
+			}
 			Serial.printf("\n4) Copying from USB drive 2 to SDIO card\n");
 			/* Open source file */
 			if(!file1.open(&msc2,file2Copy, O_RDONLY)) {
@@ -292,7 +298,7 @@ void loop(void) {
 				break;
 			}
 			/* Create destination file on the drive 0 */
-			if(!file2.open(&msc2,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
+			if(!file2.open(&sdio,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
@@ -302,7 +308,14 @@ void loop(void) {
 			}
 			break;
 		case '5':
-			if(!driveAvailable(&msDrive1, &msc1) || !sdCardAvailable(&spi)) break; // Is the drive available and mounted?
+			if(!driveAvailable(&msDrive1, &msc1)) {
+				Serial.printf("USB Drive 1 is not connected or not mountable\n");
+				break;
+			}
+			if(!sdCardAvailable(&spi)) {
+				Serial.printf("External SD card is not inserted or not mountable\n");
+				break;
+			}
 			Serial.printf("\n5) Copying from USB drive 1 to External SD card\n");
 			/* Open source file */
 			if(!file1.open(&msc1,file2Copy, O_RDONLY)) {
@@ -320,7 +333,14 @@ void loop(void) {
 			}
 			break;
 		case '6':
-			if(!driveAvailable(&msDrive2, &msc2) || !sdCardAvailable(&spi)) break; // Is the drive available and mounted?
+			if(!driveAvailable(&msDrive2, &msc2)) {
+				Serial.printf("USB Drive 2 is not connected or not mountable\n");
+				break;
+			}
+			if(!sdCardAvailable(&spi)) {
+				Serial.printf("External SD card is not inserted or not mountable\n");
+				break;
+			}
 			Serial.printf("\n6) Copying from USB drive 2 to External SD card\n");
 			/* Open source file */
 			if(!file1.open(&msc2,file2Copy, O_RDONLY)) {
@@ -338,7 +358,14 @@ void loop(void) {
 			}
 			break;
 		case '7':
-			if(!sdCardAvailable(&sdio) || !sdCardAvailable(&spi)) break; // Is the drive available and mounted?
+			if(!sdCardAvailable(&sdio)) {
+				Serial.printf("SDIO card is not inserted or not mountable\n");
+				break;
+			}
+			if(!sdCardAvailable(&spi)) {
+				Serial.printf("External SD card is not inserted or not mountable\n");
+				break;
+			}
 			Serial.printf("\n7) Copying from SDIO card to External SD card\n");
 			/* Open source file */
 			if(!file1.open(&sdio,file2Copy, O_RDONLY)) {
@@ -356,7 +383,14 @@ void loop(void) {
 			}
 			break;
 		case '8':
-			if(!sdCardAvailable(&spi) || !sdCardAvailable(&sdio)) break; // Is the drive available and mounted?
+			if(!sdCardAvailable(&spi)) {
+				Serial.printf("External SD card is not inserted or not mountable\n");
+				break;
+			}
+			if(!sdCardAvailable(&sdio)) {
+				Serial.printf("SDIO card is not inserted or not mountable\n");
+				break;
+			}
 			Serial.printf("\n8) Copying from External SD card to SDIO card\n");
 			/* Open source file */
 			if(!file1.open(&spi,file2Copy, O_RDONLY)) {
@@ -374,7 +408,14 @@ void loop(void) {
 			}
 			break;
 		case '9':
-			if(!sdCardAvailable(&sdio) || !driveAvailable(&msDrive1, &msc1)) break; // Is the drive available and mounted?
+			if(!sdCardAvailable(&sdio)) {
+				Serial.printf("SDIO card is not inserted or not mountable\n");
+				break;
+			}
+			if(!driveAvailable(&msDrive1, &msc1)) {
+				Serial.printf("USB Drive 1 is not connected or not mountable\n");
+				break;
+			}
 			Serial.printf("\n9) Copying from SDIO card to USB drive 1 \n");
 			/* Open source file */
 			if(!file1.open(&sdio,file2Copy, O_RDONLY)) {
@@ -392,6 +433,14 @@ void loop(void) {
 			}
 			break;
 		case 'a':
+			if(!sdCardAvailable(&sdio)) {
+				Serial.printf("SDIO card is not inserted or not mountable\n");
+				break;
+			}
+			if(!driveAvailable(&msDrive2, &msc2)) {
+				Serial.printf("USB Drive 2 is not connected or not mountable\n");
+				break;
+			}
 			if(!sdCardAvailable(&sdio) || !driveAvailable(&msDrive2, &msc2)) break; // Is the drive available and mounted?
 			Serial.printf("\na) Copying from SDIO card to USB drive 2\n");
 			/* Open source file */
@@ -410,7 +459,14 @@ void loop(void) {
 			}
 			break;
 		case 'b':
-			if(!driveAvailable(&msDrive1, &msc1) || !sdCardAvailable(&spi)) break; // Is the drive available and mounted?
+			if(!sdCardAvailable(&spi)) {
+				Serial.printf("External SD card is not inserted or not mountable\n");
+				break;
+			}
+			if(!driveAvailable(&msDrive1, &msc1)) {
+				Serial.printf("USB Drive 1 is not connected or not mountable\n");
+				break;
+			}
 			Serial.printf("\nb) Copying from External SD card to USB drive 1 \n");
 			/* Open source file */
 			if(!file1.open(&spi,file2Copy, O_RDONLY)) {
@@ -428,6 +484,14 @@ void loop(void) {
 			}
 			break;
 		case 'c':
+			if(!sdCardAvailable(&spi)) {
+				Serial.printf("External SD card is not inserted or not mountable\n");
+				break;
+			}
+			if(!driveAvailable(&msDrive2, &msc2)) {
+				Serial.printf("USB Drive 2 is not connected or not mountable\n");
+				break;
+			}
 			if(!sdCardAvailable(&spi) || !driveAvailable(&msDrive2, &msc2)) break; // Is the drive available and mounted?
 			Serial.printf("\nc) Copying from External SD card to USB drive 2\n");
 			/* Open source file */
@@ -451,7 +515,4 @@ void loop(void) {
 		default:
 			break;
 	}
-	Serial.printf("\nPress a key to continue...\n");
-	while(!Serial.available());
-	c = Serial.read();
 }
