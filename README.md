@@ -25,7 +25,7 @@ Examples:
                         unzip and copy it to one of the storage devices. You can then use that
                         to copy between the different storage devices.
 
-- copyFileUSB.ino       Demonstrates copying, renameing and deleteing a text file.
+- copyFileUSB.ino       Demonstrates copying, renaming and deleting a text file.
 
 - DataloggerUSB.ino     Original from SD modified for USB drives.
 
