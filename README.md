@@ -15,13 +15,34 @@ Installation:
 Install this library in Arduino/libraries folder.
   
 Examples:
-- benchUSB.ino		Test USB drive read and write speeds.
+- benchUSB.ino		      Test USB drive read and write speeds. Modified from SdFat example for
+                        use with USB drives.
 
-- CardInfoUSB.ino	Get USB drive information.
+- CardInfoUSB.ino	      Get USB drive information.
 
-- copyFilesUSB.ino	Copy a 32Meg file between USB drives and both SDIO and External SD cards.
+- copyFilesUSB.ino	    Copy a 32Meg file between USB drives and both SDIO and External SD cards.
                         The file named '32MEGfile.dat.zip' is supplied in the 'extras' folder.
                         unzip and copy it to one of the storage devices. You can then use that
                         to copy between the different storage devices.
-- copyFile.ino          Demonstrates copying, renameing and deleteing a text file.
 
+- copyFileUSB.ino       Demonstrates copying, renameing and deleteing a text file.
+
+- DataloggerUSB.ino     Original from SD modified for USB drives.
+
+- DumpFile.ino          Original from SD modified for USB drives.
+
+- ExFatFormatterUSB.ino Formats USB drives to SdFat ExFat.
+
+- FilesUSB.ino          Original from SD modified for USB drives.
+
+- listFiles.ino         Original from SD modified for USB drives.
+
+- MSCDriveInfo.ino      Gives low level information about USB drives attached.
+
+- ReadWriteUSB.ino      Original from SD modified for USB drives.
+
+- SdInfoUSB.ino         Modified from SdFat example for use with USB drives.
+
+- WaveFilePlayerUSB.ino This is a modfied version of WaveFilePlayer.ino from the Audio library that
+                        works with USB Mass Storage devices.
+                        
