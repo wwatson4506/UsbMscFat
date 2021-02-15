@@ -36,7 +36,7 @@
 const char *decodeSenseKey(uint8_t senseKey);
 const char *decodeAscAscq(uint8_t asc, uint8_t ascq);
 
-void printMscError(print_t* pr, msController *pDrive);
+void printMscAscError(print_t* pr, msController *pDrive);
 
 const uint8_t SD_CARD_TYPE_USB = 4;
 //-----------------------------------------------------------------------------

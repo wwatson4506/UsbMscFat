@@ -72,6 +72,7 @@ class UsbBase : public Vol {
    */
   bool usbDriveBegin(msController *pDrive) {
     m_USBmscDrive = m_USBmscFactory.newMSCDevice(pDrive);
+	thisMscDrive = pDrive;
     return m_USBmscDrive && !m_USBmscDrive->errorCode();
   }
   //----------------------------------------------------------------------------
@@ -217,11 +218,11 @@ class UsbBase : public Vol {
         pr->println(F("No USB drive detected, plugged in?"));
       }
       pr->print(F("USB drive error: "));
-      printMscErrorSymbol(pr, mscErrorCode());
-      pr->print(F(" = 0x"));
+      pr->print(F("0x"));
       pr->print(mscErrorCode(), HEX);
       pr->print(F(",0x"));
-      pr->println(mscErrorData(), HEX);
+      pr->print(mscErrorData(), HEX);
+      printMscAscError(pr, thisMscDrive);
     } else if (!Vol::fatType()) {
       pr->println(F("Check USB drive format."));
     }
@@ -303,6 +304,7 @@ class UsbBase : public Vol {
  private:
   mscDevice*  m_USBmscDrive;
   USBmscFactory m_USBmscFactory;
+  msController *thisMscDrive;
 };
 //------------------------------------------------------------------------------
 /**

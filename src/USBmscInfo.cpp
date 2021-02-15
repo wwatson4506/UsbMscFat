@@ -64,7 +64,7 @@ const char *decodeAscAscq(uint8_t asc, uint8_t ascq) {
 }
 
 //------------------------------------------------------------------------------
-void printMscError(print_t* pr, msController *pDrive) {
+void printMscAscError(print_t* pr, msController *pDrive) {
 		Serial.printf(" --> Type: %s Cause: %s\n",
 		decodeSenseKey(pDrive->msSense.SenseKey),
 		decodeAscAscq(pDrive->msSense.AdditionalSenseCode,
