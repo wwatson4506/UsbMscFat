@@ -25,7 +25,7 @@ static ArduinoOutStream cout(Serial);
 void errorPrint() {
   if (msc1.mscErrorCode()) {
     cout << F("msc1 errorCode: ") << hex << showbase;
-    printMscErrorSymbol(&Serial, msc1.mscErrorCode());
+    msc1.printMscError(&Serial);
     cout << F(" = ") << int(msc1.mscErrorCode()) << endl;
     cout << F("msc1 errorData = ") << int(msc1.mscErrorData()) << endl;
   }
