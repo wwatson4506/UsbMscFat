@@ -46,3 +46,11 @@ Examples:
 - WaveFilePlayerUSB.ino This is a modfied version of WaveFilePlayer.ino from the Audio library that
                         works with USB Mass Storage devices.
                         
+Error checking is still not completely functional yet. Mass storage sense key codes and additional sense codes are proccessed.
+They are displayed as definitions of the error codes not the codes them selves. I have one PNY USB thumb drive that magically
+decided to write protect itself and gave me this error when I tryed to do a direct sector write:
+
+SCSI Transfer Failed: Code: 1 --> Type: DATA_PROTECT Cause: WRITE PROTECTED.
+
+It turns out that this particular thumb drive had a factory firmware defect that needed an update. USB drives that I have don't seem to cause many failures using MSC so far so it was nice to be able to actually have it fail to test the sense codes.
+
