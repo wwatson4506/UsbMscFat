@@ -9,7 +9,6 @@
  	
  Created 2-15-2021
  by Warren Watson
-
 */
 
 #include "SPI.h"
@@ -27,7 +26,7 @@ USBHub hub4(myusb);
 // Setup MSC for the number of USB Drives you are using. (Two for this example)
 // Mutiple  USB drives can be used. Hot plugging is supported. There is a slight
 // delay after a USB MSC device is plugged in. This is waiting for initialization
-// but after it is initialized ther should be no delay.
+// but after it is initialized there should be no delay.
 msController msDrive1(myusb);
 msController msDrive2(myusb);
 
@@ -37,16 +36,16 @@ const uint8_t SD_CS_PIN = 10;
 #define SPI_CLOCK SD_SCK_MHZ(60)
 // Try max SPI clock for an SD card. Reduce SPI_CLOCK if errors occur.
 #define SPI_CLOCK1 SD_SCK_MHZ(46)
-
+// Setup the SD card device configs.
 #define SD_CONFIG SdioConfig(FIFO_SDIO)
 #define SD_CONFIG1 SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SPI_CLOCK1)
 
-// set up variables using the SD utility library functions:
+// Create USB and SD instances. Two USB drives and two SD cards.
 UsbFs msc1;
 UsbFs msc2;
 SdFs sdio;
 SdFs spi;
-
+// Create SdFat source and destination file pointers.
 FsFile file1;
 FsFile file2;
 
