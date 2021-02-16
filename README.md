@@ -20,7 +20,7 @@ Examples:
 
 - CardInfoUSB.ino	      Get USB drive information.
 
-- copyFilesUSB.ino	    Copy a 32Meg file between USB drives and both SDIO and External SD cards.
+- copyFilesUSB.ino	    Copy a file between USB drives and both SDIO and External SD cards.
                         The file named '32MEGfile.dat.zip' is supplied in the 'extras' folder.
                         unzip and copy it to one of the storage devices. You can then use that
                         to copy between the different storage devices.
