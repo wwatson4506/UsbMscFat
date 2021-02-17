@@ -212,8 +212,8 @@ void loop(void) {
 	c = Serial.read();
 	while(Serial.available()) Serial.read(); // Get rid of CR and/or LF if there.
 
-	// This is a rather large and blotted swithch() statement. And there are better ways to do this
-	// but it served the quick copy, paste and modify senario:)
+	// This is a rather large and bloated switch() statement. And there are better ways to do this
+	// but it served the quick copy paste modify senario:)
 	switch(c) {
 		case '1':
 			if(!driveAvailable(&msDrive1, &msc1)) { // Check for USB drive 1 connected and mounted.
