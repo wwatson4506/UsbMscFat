@@ -38,7 +38,7 @@
   // Support everything on 32 bit boards with enough memory
   #define MSCFAT_FILE FsFile
   #define MSCFAT_BASE UsbFs
-  #define MAX_FILENAME_LEN 256
+  #define MSC_MAX_FILENAME_LEN 256
 #endif
 
 class MSCFile : public File
@@ -104,9 +104,9 @@ public:
 	}
 	virtual const char * name() {
 		if (!filename) {
-			filename = (char *)malloc(MAX_FILENAME_LEN);
+			filename = (char *)malloc(MSC_MAX_FILENAME_LEN);
 			if (filename) {
-				mscfatfile.getName(filename, MAX_FILENAME_LEN);
+				mscfatfile.getName(filename, MSC_MAX_FILENAME_LEN);
 			} else {
 				static char zeroterm = 0;
 				filename = &zeroterm;
@@ -179,7 +179,7 @@ extern MSCClass MSC;
 // do not expose these defines in Arduino sketches or other libraries
 #undef MSCFAT_FILE
 #undef MSCFAT_BASE
-#undef MAX_FILENAME_LEN
+#undef MSC_MAX_FILENAME_LEN
 
 #define SD_CARD_TYPE_USB 4
 
