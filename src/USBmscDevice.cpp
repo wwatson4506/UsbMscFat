@@ -36,8 +36,8 @@ static bool (*m_busyFcn)() = 0;
 static uint8_t m_errorCode = MS_NO_MEDIA_ERR;
 static uint32_t m_errorLine = 0;
 //static msController *thisDrive = nullptr;
-static bool isBusyRead();
-static bool isBusyWrite();
+bool isBusyRead();
+bool isBusyWrite();
 
 //==============================================================================
 // Error function and macro.
