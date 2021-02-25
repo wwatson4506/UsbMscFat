@@ -29,8 +29,9 @@
 //#ifdef HAS_USB_MSC_CLASS
 const uint32_t BUSY_TIMEOUT_MICROS = 1000000;
 
-static bool yieldTimeout(bool (*fcn)());
-static bool waitTimeout(bool (*fcn)());
+//static bool yieldTimeout(bool (*fcn)()); //Not used yet, if at all
+//static bool waitTimeout(bool (*fcn)());  //Not used yet, if at all
+
 static bool m_initDone = false;
 static bool (*m_busyFcn)() = 0;
 static uint8_t m_errorCode = MS_NO_MEDIA_ERR;
@@ -48,6 +49,7 @@ inline bool setSdErrorCode(uint8_t code, uint32_t line) {
   return false;
 }
 
+/* Not used yet if at all
 //------------------------------------------------------------------------------
 // Return true if timeout occurs.
 static bool yieldTimeout(bool (*fcn)()) {
@@ -74,6 +76,7 @@ static bool waitTimeout(bool (*fcn)()) {
   }
   return false;  // Caller will set errorCode.
 }
+*/
 
 bool USBMSCDevice::isBusyRead() {
 	return thisDrive->mscTransferComplete;
