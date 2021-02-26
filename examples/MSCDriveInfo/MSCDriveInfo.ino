@@ -101,7 +101,7 @@ void setup()
   // print the type and size of the first FAT-type volume
   volumesize = 0;
   Serial.print("\nVolume type is FAT");
-  Serial.println(myDrive1.fatType(), DEC);
+  Serial.println(myDrive2.fatType(), DEC);
 //  Serial.println();
   Serial.print("Cluster Size (bytes): ");
   Serial.println(myDrive2.vol()->bytesPerCluster());
