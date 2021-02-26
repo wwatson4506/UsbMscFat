@@ -142,8 +142,9 @@ public:
 	}
 	File open(const char *filepath, uint8_t mode = FILE_READ) {
 		oflag_t flags = O_READ;
-		if (mode == FILE_WRITE) flags = O_RDWR | O_CREAT | O_AT_END;
-		else if (mode == FILE_WRITE_BEGIN) flags = O_RDWR | O_CREAT;
+		if (mode == FILE_WRITE) {flags = O_RDWR | O_CREAT | O_AT_END; _cached_usedSize_valid = false; }
+
+		else if (mode == FILE_WRITE_BEGIN) {flags = O_RDWR | O_CREAT;  _cached_usedSize_valid = false; }
 		MSCFAT_FILE file = mscfs.open(filepath, flags);
 		if (file) return File(new MSCFile(file));
 			return File();
@@ -152,26 +153,37 @@ public:
 		return mscfs.exists(filepath);
 	}
 	bool mkdir(const char *filepath) {
+		_cached_usedSize_valid = false;
 		return mscfs.mkdir(filepath);
 	}
 	bool rename(const char *oldfilepath, const char *newfilepath) {
+		_cached_usedSize_valid = false;
 		return mscfs.rename(oldfilepath, newfilepath);
 	}
 	bool remove(const char *filepath) {
+		_cached_usedSize_valid = false;
 		return mscfs.remove(filepath);
 	}
 	bool rmdir(const char *filepath) {
+		_cached_usedSize_valid = false;
 		return mscfs.rmdir(filepath);
 	}
 	uint64_t usedSize() {
-		return (uint64_t)(mscfs.clusterCount() - mscfs.freeClusterCount())
-		  * (uint64_t)mscfs.bytesPerCluster();
+		if (!_cached_usedSize_valid) {
+			_cached_usedSize_valid = true;
+			_cached_usedSize =  (uint64_t)(mscfs.clusterCount() - mscfs.freeClusterCount())
+		  		* (uint64_t)mscfs.bytesPerCluster();
+	  	}
+		return _cached_usedSize;
 	}
 	uint64_t totalSize() {
 		return (uint64_t)mscfs.clusterCount() * (uint64_t)mscfs.bytesPerCluster();
 	}
 public: // allow access, so users can mix MSC & SdFat APIs
 	MSCFAT_BASE mscfs;
+protected:
+	uint64_t _cached_usedSize;
+	bool 	_cached_usedSize_valid = false;
 };
 
 extern MSCClass MSC;
