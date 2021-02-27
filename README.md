@@ -46,6 +46,8 @@ Examples:
 - WaveFilePlayerUSB.ino This is a modfied version of WaveFilePlayer.ino from the Audio library that
                         works with USB Mass Storage devices.
                         
+- volumeName.ino        This sketch is an example of aquiring volume names from multiple partitions of multiple Fat types.
+
 Error checking is still not completely functional yet. Mass storage sense key codes and additional sense codes are proccessed.
 They are displayed as definitions of the error codes not the codes them selves. I have one PNY USB thumb drive that magically
 decided to write protect itself and gave me this error when I tryed to do a direct sector write:
