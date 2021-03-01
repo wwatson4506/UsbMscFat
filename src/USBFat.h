@@ -31,6 +31,7 @@
  */
 #include "USBHost_t36.h"
 #include "USBmsc.h"
+#include "PFsLib/PFsLib.h"
 
 //------------------------------------------------------------------------------
 /** MSCFat version */
