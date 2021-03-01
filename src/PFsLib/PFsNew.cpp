@@ -23,7 +23,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 #include "PFsNew.h"
+#if 0
 void* operator new(size_t size, newalign_t* ptr) {
   (void)size;
   return ptr;
 }
+#endif
