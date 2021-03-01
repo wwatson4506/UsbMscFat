@@ -36,7 +36,7 @@
 
 #if defined(__arm__)
   // Support everything on 32 bit boards with enough memory
-  #define MSCFAT_FILE FsFile
+  #define MSCFAT_FILE PFsFile
   #define MSCFAT_BASE UsbFs
   #define MSC_MAX_FILENAME_LEN 256
 #endif
@@ -137,8 +137,8 @@ class MSCClass : public FS
 {
 public:
 	MSCClass() { }
-	bool begin(msController *pDrive) {
-		return mscfs.begin(pDrive);
+	bool begin(msController *pDrive, bool setCwv = true, uint8_t part = 1) {
+		return mscfs.begin(pDrive, setCwv, part);
 	}
 	File open(const char *filepath, uint8_t mode = FILE_READ) {
 		oflag_t flags = O_READ;
