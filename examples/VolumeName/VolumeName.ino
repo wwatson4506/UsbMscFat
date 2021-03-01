@@ -66,7 +66,7 @@ bool getPartitionVolumeLabel(PFsVolume &partVol, uint8_t *pszVolName, uint16_t c
       {
         DirLabel_t *dir;
         dir = reinterpret_cast<DirLabel_t*>(buf);
-        if (dir->type != EXFAT_TYPE_LABEL) return false; // not a label? 
+        if (dir->type != EXFAT_TYPE_LABEL) return false; // not a label?
         size_t i;
         for (i = 0; i < dir->labelLength; i++) {
           pszVolName[i] = dir->unicode[2 * i];
@@ -74,16 +74,16 @@ bool getPartitionVolumeLabel(PFsVolume &partVol, uint8_t *pszVolName, uint16_t c
         pszVolName[i] = 0;
       }
       break;
-    } 
+  }
   return true;
 }
 
 
 
-bool mbrDmp(UsbFs *myMsc) {
+bool mbrDmp(BlockDeviceInterface *blockDev) {
   MbrSector_t mbr;
   // bool valid = true;
-  if (!myMsc->usbDrive()->readSector(0, (uint8_t*)&mbr)) {
+  if (!blockDev->readSector(0, (uint8_t*)&mbr)) {
     Serial.print("\nread MBR failed.\n");
     //errorPrint();
     return false;
@@ -201,7 +201,9 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
   }
   cmsReport = -1;
 
-  mbrDmp( &msc );
+  //  mbrDmp( &msc );
+  mbrDmp( msc.usbDrive() );
+
   for (uint8_t i = 1; i < 5; i++) {
     PFsVolume partVol;
     uint8_t volName[32];
@@ -220,7 +222,7 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
     }
     elapsedMicros em_sizes = 0;
     uint64_t used_size =  (uint64_t)(partVol.clusterCount() - partVol.freeClusterCount())
-                      * (uint64_t)partVol.bytesPerCluster();
+                          * (uint64_t)partVol.bytesPerCluster();
     uint64_t total_size = (uint64_t)partVol.clusterCount() * (uint64_t)partVol.bytesPerCluster();
     Serial.printf(" Partition Total Size:%llu Used:%llu time us: %u\n", total_size, used_size, (uint32_t)em_sizes);
 
@@ -257,22 +259,33 @@ void loop(void) {
     Serial.println("initialization failed.\n");
   } else {
     Serial.println("SD card is present.\n");
+    mbrDmp(sd.card() );
     PFsVolume partVol;
-    if (!partVol.begin(sd.card(), true, 1)) Serial.println("SD Did not open partition...");
-    switch (partVol.fatType())
-    {
-      case FAT_TYPE_FAT12: Serial.print("\n>> Fat12: "); break;
-      case FAT_TYPE_FAT16: Serial.print("\n>> Fat16: "); break;
-      case FAT_TYPE_FAT32: Serial.print("\n>> Fat32: "); break;
-      case FAT_TYPE_EXFAT: Serial.print("\n>> ExFat: "); break;
-    }
-    uint8_t volName[32];
-    if (getPartitionVolumeLabel(partVol, volName, sizeof(volName))) {
-      Serial.printf("Volume name:(%s)\n", volName);
-    }
 
+    for (uint8_t i = 1; i < 5; i++) {
+      PFsVolume partVol;
+      uint8_t volName[32];
+      if (!partVol.begin(sd.card(), true, i)) continue; // not a valid volume.
+      partVol.chvol();
 
-    //sd.ls(LS_SIZE | LS_DATE | LS_R);
+      switch (partVol.fatType())
+      {
+        case FAT_TYPE_FAT12: Serial.print("\n>> Fat12: "); break;
+        case FAT_TYPE_FAT16: Serial.print("\n>> Fat16: "); break;
+        case FAT_TYPE_FAT32: Serial.print("\n>> Fat32: "); break;
+        case FAT_TYPE_EXFAT: Serial.print("\n>> ExFat: "); break;
+      }
+      if (getPartitionVolumeLabel(partVol, volName, sizeof(volName))) {
+        Serial.printf("Volume name:(%s)", volName);
+      }
+      elapsedMicros em_sizes = 0;
+      uint64_t used_size =  (uint64_t)(partVol.clusterCount() - partVol.freeClusterCount())
+                            * (uint64_t)partVol.bytesPerCluster();
+      uint64_t total_size = (uint64_t)partVol.clusterCount() * (uint64_t)partVol.bytesPerCluster();
+      Serial.printf(" Partition Total Size:%llu Used:%llu time us: %u\n", total_size, used_size, (uint32_t)em_sizes);
+
+      partVol.ls();
+    }
   }
 
   Serial.println("done...");
