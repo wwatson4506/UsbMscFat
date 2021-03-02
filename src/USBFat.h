@@ -60,7 +60,10 @@ class UsbBase : public Vol {
    * \return true for success or false for failure.
    */
   bool mscBegin(msController *pDrive, bool setCwv = true, uint8_t part = 1) {
-    return usbDriveBegin(pDrive) && Vol::begin(m_USBmscDrive, setCwv, part);
+    Serial.printf("UsbBase::mscBegin called %x %x %d\n", (uint32_t)pDrive, setCwv, part);
+    if (!usbDriveBegin(pDrive)) return false;
+    Serial.println("    After usbDriveBegin");
+    return Vol::begin(m_USBmscDrive, setCwv, part);
   }
   //----------------------------------------------------------------------------
   /** \return Pointer to USB MSC object. */

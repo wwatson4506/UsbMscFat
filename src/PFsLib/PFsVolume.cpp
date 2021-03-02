@@ -26,7 +26,7 @@
 PFsVolume* PFsVolume::m_cwv = nullptr;
 //------------------------------------------------------------------------------
 bool PFsVolume::begin(BlockDevice* blockDev, bool setCwv, uint8_t part) {
-//  Serial.printf("PFsVolume::begin(%x)\n", (uint32_t)blockDev);
+  Serial.printf("PFsVolume::begin(%x)\n", (uint32_t)blockDev);
   m_blockDev = blockDev;
   m_fVol = nullptr;
   m_xVol = new (m_volMem) ExFatVolume;
