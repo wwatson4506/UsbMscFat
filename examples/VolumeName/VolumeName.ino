@@ -43,7 +43,7 @@ bool getPartitionVolumeLabel(PFsVolume &partVol, uint8_t *pszVolName, uint16_t c
   PFsFile root;
   if (!root.openRoot(&partVol)) return false;
   root.read(buf, 32);
-  //print_hexbytes(buf, 32);
+  //dump_hexbytes(buf, 32);
 
   switch (partVol.fatType())
   {
@@ -78,6 +78,60 @@ bool getPartitionVolumeLabel(PFsVolume &partVol, uint8_t *pszVolName, uint16_t c
   return true;
 }
 
+typedef struct {
+  uint32_t free;
+  uint32_t todo;
+  uint32_t clusters_per_sector;
+} _gfcc_t;
+
+
+void _getfreeclustercountCB(uint32_t token, uint8_t *buffer) 
+{
+  digitalWriteFast(1, HIGH);
+  _gfcc_t *gfcc = (_gfcc_t *)token;
+  uint16_t cnt = gfcc->clusters_per_sector;
+  if (cnt > gfcc->todo) cnt = gfcc->todo;
+  gfcc->todo -= cnt; // update count here...
+
+  if (gfcc->clusters_per_sector == 512/2) {
+    // fat16
+    uint16_t *fat16 = (uint16_t *)buffer;
+    while (cnt-- ) {
+      if (*fat16++ == 0) gfcc->free++;
+    }
+  } else {
+    uint32_t *fat32 = (uint32_t *)buffer;
+    while (cnt-- ) {
+      if (*fat32++ == 0) gfcc->free++;
+    }
+  }
+
+  digitalWriteFast(1, LOW);
+}
+
+uint32_t GetFreeClusterCount(USBmscInterface *usmsci, PFsVolume &partVol)
+{
+
+  FatVolume* fatvol =  partVol.getFatVol();
+  if (!fatvol) return 0;
+
+  _gfcc_t gfcc; 
+  gfcc.free = 0;
+
+  switch (partVol.fatType()) {
+    default: return 0;
+    case FAT_TYPE_FAT16: gfcc.clusters_per_sector = 512/2; break;
+    case FAT_TYPE_FAT32: gfcc.clusters_per_sector = 512/4; break;
+  }
+  gfcc.todo = fatvol->clusterCount() + 2;
+
+  digitalWriteFast(0, HIGH);
+  usmsci->readSectorsWithCB(fatvol->fatStartSector(), gfcc.todo / gfcc.clusters_per_sector + 1, 
+      &_getfreeclustercountCB, (uint32_t)&gfcc);
+  digitalWriteFast(0, LOW);
+
+  return gfcc.free;
+}
 
 
 bool mbrDmp(BlockDeviceInterface *blockDev) {
@@ -136,6 +190,9 @@ void setup()
   int *pp = 0;
   *pp = 5;
 #endif
+pinMode(0, OUTPUT);
+pinMode(1, OUTPUT);
+pinMode(2, OUTPUT);
   // Open serial communications and wait for port to open:
   Serial.begin(9600);
   while (!Serial) {
@@ -165,7 +222,7 @@ void clock_isr() {
   }
 }
 
-void print_hexbytes(const void *ptr, int len)
+void dump_hexbytes(const void *ptr, int len)
 {
   if (ptr == NULL || len <= 0) return;
   const uint8_t *p = (const uint8_t *)ptr;
@@ -204,6 +261,42 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
   //  mbrDmp( &msc );
   mbrDmp( msc.usbDrive() );
 
+  #if 1
+  bool partition_valid[4];
+  PFsVolume partVol[4];
+  uint8_t volName[32];
+
+  for (uint8_t i = 0; i < 4; i++) {
+    partition_valid[i] = partVol[i].begin(msc.usbDrive(), true, i+1);
+    Serial.printf("Partition %u valid:%u\n", i, partition_valid[i]);
+  }
+  for (uint8_t i = 0; i < 4; i++) {
+    if(partition_valid[i]) {
+      switch (partVol[i].fatType())
+      {
+        case FAT_TYPE_FAT12: Serial.printf("%d:>> Fat12: ", i); break;
+        case FAT_TYPE_FAT16: Serial.printf("%d:>> Fat16: ", i); break;
+        case FAT_TYPE_FAT32: Serial.printf("%d:>> Fat32: ", i); break;
+        case FAT_TYPE_EXFAT: Serial.printf("%d:>> ExFat: ", i); break;
+      }
+      if (getPartitionVolumeLabel(partVol[i], volName, sizeof(volName))) {
+        Serial.printf("Volume name:(%s)", volName);
+      }
+      elapsedMicros em_sizes = 0;
+      uint32_t free_cluster_count = partVol[i].freeClusterCount();
+      uint64_t used_size =  (uint64_t)(partVol[i].clusterCount() - free_cluster_count)
+                            * (uint64_t)partVol[i].bytesPerCluster();
+      uint64_t total_size = (uint64_t)partVol[i].clusterCount() * (uint64_t)partVol[i].bytesPerCluster();
+      Serial.printf(" Partition Total Size:%llu Used:%llu time us: %u\n", total_size, used_size, (uint32_t)em_sizes);
+
+      em_sizes = 0; // lets see how long this one takes. 
+      uint32_t free_clusters_fast = GetFreeClusterCount(msc.usbDrive(), partVol[i]);
+      Serial.printf("    Free Clusters: API: %u by CB:%u time us: %u\n", free_cluster_count, free_clusters_fast, (uint32_t)em_sizes);
+      partVol[i].ls();
+    }
+  }
+
+  #else
   for (uint8_t i = 1; i < 5; i++) {
     PFsVolume partVol;
     uint8_t volName[32];
@@ -228,6 +321,7 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
 
     partVol.ls();
   }
+  #endif
 }
 
 //================================================================

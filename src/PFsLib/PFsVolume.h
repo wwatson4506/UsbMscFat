@@ -52,6 +52,10 @@ class PFsVolume {
    * \return true for success or false for failure.
    */
   bool begin(BlockDevice* dev, bool setCwv = true, uint8_t part = 1);
+
+  FatVolume*  getFatVol() {return m_fVol;}
+  ExFatVolume* getExFatVol() { return m_xVol; }
+
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
   // Use sectorsPerCluster(). blocksPerCluster() will be removed in the future.
   uint32_t blocksPerCluster() __attribute__ ((deprecated)) {return sectorsPerCluster();} //NOLINT

@@ -120,6 +120,18 @@ class USBMSCDevice : public USBmscInterface {
    */
   bool writeSectors(uint32_t sector, const uint8_t* src, size_t ns);
 
+  /**
+   * Read multiple 512 byte sectors from an USB MSC drive, using 
+   * a callback per sector
+   *
+   * \param[in] sector Logical sector to be read.
+   * \param[in] ns Number of sectors to be read.
+   * \param[in] callback function to call for each sector read.
+   * \return true for success or false for failure.
+   */
+  bool readSectorsWithCB(uint32_t sector, size_t ns, void (*callback)(uint32_t, uint8_t *), uint32_t token);
+
+
 private:
   msController *thisDrive;
 };

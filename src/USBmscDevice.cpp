@@ -162,6 +162,22 @@ bool USBMSCDevice::readSectors(uint32_t sector, uint8_t* dst, size_t n) {
 	}
 	return true;
 }
+
+//------------------------------------------------------------------------------
+bool USBMSCDevice::readSectorsWithCB(uint32_t sector, size_t ns, void (*callback)(uint32_t, uint8_t *), uint32_t token) {
+  // Check if device is plugged in and initialized
+  if((m_errorCode = ((msController *)thisDrive)->checkConnectedInitialized()) != MS_CBW_PASS) {
+    return false;
+  }
+  m_errorCode = thisDrive->msReadSectorsWithCB(sector, ns, callback, token);
+  if(m_errorCode) {
+    return false;
+  }
+  return true;
+
+}
+
+
 //------------------------------------------------------------------------------
 bool USBMSCDevice::writeSector(uint32_t sector, const uint8_t* src) {
   return writeSectors(sector, src, 1);
