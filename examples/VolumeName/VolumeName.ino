@@ -109,6 +109,7 @@ void _getfreeclustercountCB(uint32_t token, uint8_t *buffer)
   digitalWriteFast(1, LOW);
 }
 
+//-------------------------------------------------------------------------------------------------
 uint32_t GetFreeClusterCount(USBmscInterface *usmsci, PFsVolume &partVol)
 {
 
@@ -133,6 +134,101 @@ uint32_t GetFreeClusterCount(USBmscInterface *usmsci, PFsVolume &partVol)
   return gfcc.free;
 }
 
+
+//-------------------------------------------------------------------------------------------------
+uint32_t ReadFat32InfoSectorFree(BlockDeviceInterface *blockDev, uint8_t part) {
+  uint8_t sector_buffer[512];
+
+  
+  if (!blockDev->readSector(0, sector_buffer)) return (uint32_t)-1;
+  MbrSector_t *mbr = reinterpret_cast<MbrSector_t*>(sector_buffer);
+  MbrPart_t *pt = &mbr->part[part - 1];
+  BpbFat32_t* bpb;
+  if ((pt->type != 11) && (pt->type != 12))  return (uint32_t)-1;
+
+  uint32_t volumeStartSector = getLe32(pt->relativeSectors);
+  if (!blockDev->readSector(volumeStartSector, sector_buffer)) return (uint32_t)-1;
+  pbs_t *pbs = reinterpret_cast<pbs_t*> (sector_buffer);
+  bpb = reinterpret_cast<BpbFat32_t*>(pbs->bpb);
+  
+  //Serial.println("\nReadFat32InfoSectorFree BpbFat32_t sector");
+  //dump_hexbytes(sector_buffer, 512);
+  uint16_t infoSector = getLe16(bpb->fat32FSInfoSector); 
+
+  // I am assuming this sector is based off of the volumeStartSector... So try reading from there.
+  //Serial.printf("Try to read Info sector (%u)\n", infoSector); Serial.flush(); 
+  if (!blockDev->readSector(volumeStartSector+infoSector, sector_buffer)) return (uint32_t)-1;
+  //dump_hexbytes(sector_buffer, 512);
+  FsInfo_t *pfsi = reinterpret_cast<FsInfo_t*>(sector_buffer);
+
+  // check signatures:
+  if (memcmp(pfsi->leadSignature, "RRaA", 4) != 0) Serial.println("Lead Sig wrong");    
+  if (memcmp(pfsi->structSignature, "rrAa", 4) != 0) Serial.println("struct Sig wrong");    
+  static const uint8_t _trail_sig[4] = {0x00, 0x00, 0x55, 0xAA};
+  if (memcmp(pfsi->trailSignature, _trail_sig, 4) != 0) Serial.println("Trail Sig wrong");    
+  uint32_t free_count = getLe32(pfsi->freeCount);
+  return free_count;
+
+}
+
+//-------------------------------------------------------------------------------------------------
+
+bool mbrDmpExtended(BlockDeviceInterface *blockDev, uint32_t sector, uint8_t indent) {
+  MbrSector_t mbr;
+  // bool valid = true;
+  if (!blockDev->readSector(sector, (uint8_t*)&mbr)) {
+    Serial.print("\nread extended MBR failed.\n");
+    //errorPrint();
+    return false;
+  }
+  for (uint8_t ip = 1; ip < 5; ip++) {
+    MbrPart_t *pt = &mbr.part[ip - 1];
+    //    if ((pt->boot != 0 && pt->boot != 0X80) ||
+    //        getLe32(pt->relativeSectors) > sdCardCapacity(&m_csd)) {
+    //      valid = false;
+    //    }
+    for (uint8_t ii=0; ii< indent; ii++)Serial.write('\t');
+    switch (pt->type) {
+      case 4:
+      case 6:
+      case 0xe:
+        Serial.print("FAT16:\t");
+        break;
+      case 11:
+      case 12:
+        Serial.print("FAT32:\t");
+        break;
+      case 7:
+        Serial.print("exFAT:\t");
+        break;
+      case 0xf:
+        Serial.print("Extend:\t");
+        break;
+      default:
+        Serial.print("pt_#");
+        Serial.print(pt->type);
+        Serial.print(":\t");
+        break;
+    }
+    Serial.print( int(ip)); Serial.print( ',');
+    Serial.print(int(pt->boot), HEX); Serial.print( ',');
+    for (int i = 0; i < 3; i++ ) {
+      Serial.print("0x"); Serial.print(int(pt->beginCHS[i]), HEX); Serial.print( ',');
+    }
+    Serial.print("0x"); Serial.print(int(pt->type), HEX); Serial.print( ',');
+    for (int i = 0; i < 3; i++ ) {
+      Serial.print("0x"); Serial.print(int(pt->endCHS[i]), HEX); Serial.print( ',');
+    }
+    uint32_t starting_sector = getLe32(pt->relativeSectors);
+    Serial.print(starting_sector, DEC); Serial.print(',');
+    Serial.println(getLe32(pt->totalSectors));
+
+    // for fun of it... try printing extended data
+    if (pt->type == 0xf) mbrDmpExtended(blockDev, starting_sector, indent+1);
+  }
+  return true;
+}
+//-------------------------------------------------------------------------------------------------
 
 bool mbrDmp(BlockDeviceInterface *blockDev) {
   MbrSector_t mbr;
@@ -163,6 +259,9 @@ bool mbrDmp(BlockDeviceInterface *blockDev) {
       case 7:
         Serial.print("exFAT:\t");
         break;
+      case 0xf:
+        Serial.print("Extend:\t");
+        break;
       default:
         Serial.print("pt_#");
         Serial.print(pt->type);
@@ -178,8 +277,12 @@ bool mbrDmp(BlockDeviceInterface *blockDev) {
     for (int i = 0; i < 3; i++ ) {
       Serial.print("0x"); Serial.print(int(pt->endCHS[i]), HEX); Serial.print( ',');
     }
-    Serial.print(getLe32(pt->relativeSectors), DEC); Serial.print(',');
+    uint32_t starting_sector = getLe32(pt->relativeSectors);
+    Serial.print(starting_sector, DEC); Serial.print(',');
     Serial.println(getLe32(pt->totalSectors));
+
+    // for fun of it... try printing extended data
+    if (pt->type == 0xf) mbrDmpExtended(blockDev, starting_sector, 1);
   }
   return true;
 }
@@ -292,6 +395,12 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
       em_sizes = 0; // lets see how long this one takes. 
       uint32_t free_clusters_fast = GetFreeClusterCount(msc.usbDrive(), partVol[i]);
       Serial.printf("    Free Clusters: API: %u by CB:%u time us: %u\n", free_cluster_count, free_clusters_fast, (uint32_t)em_sizes);
+      
+      em_sizes = 0; // lets see how long this one takes. 
+      uint32_t free_clusters_info = ReadFat32InfoSectorFree(msc.usbDrive(), i+1);
+      Serial.printf("    Free Clusters: Info: %u time us: %u\n", free_clusters_info, (uint32_t)em_sizes);
+
+
       partVol[i].ls();
     }
   }
