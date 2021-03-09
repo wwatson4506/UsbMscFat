@@ -22,13 +22,50 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-#ifndef PFsLib_h
-#define PFsLib_h
+#ifndef PFsFatFormatter_h
+#define PFsFatFormatter_h
+#include "mscFS.h"
+#include <SdFat.h>
+//#include "../common/SysCall.h"
+//#include "../common/BlockDevice.h"
+//#include "../common/FsStructs.h"
 /**
- * \file
- * \brief PFsLib include file.
+ * \class FatFormatter
+ * \brief Format a FAT volume.
  */
-#include "PFsVolume.h"
-#include "PFsFile.h"
-#include "PFsFatFormatter.h"
-#endif  // PFsLib_h
+class PFsFatFormatter {
+ public:
+  /**
+   * Format a FAT volume.
+   *
+   * \param[in] dev Block device for volume.
+   * \param[in] secBuffer buffer for writing to volume.
+   * \param[in] pr Print device for progress output.
+   *
+   * \return true for success or false for failure.
+   */
+  bool format(BlockDeviceInterface *blockDev, uint8_t part, PFsVolume &partVol, uint8_t* secBuf, print_t* pr);
+
+ private:
+  bool initFatDir(uint8_t fatType, uint32_t sectorCount);
+  void initPbs();
+  bool makeFat16();
+  bool makeFat32();
+  bool writeMbr();
+  uint32_t m_capacityMB;
+  uint32_t m_dataStart;
+  uint32_t m_fatSize;
+  uint32_t m_fatStart;
+  uint32_t m_relativeSectors;
+  uint32_t m_sectorCount;
+  uint32_t m_totalSectors;
+  BlockDevice* m_dev;
+  print_t*m_pr;
+  uint8_t* m_secBuf;
+  uint16_t m_reservedSectorCount;
+  uint8_t m_partType;
+  uint8_t m_sectorsPerCluster;
+  uint8_t begin_CHS[3];
+  uint8_t end_CHS[3];
+};
+#endif  // FatFormatter_h
