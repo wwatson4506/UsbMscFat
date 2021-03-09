@@ -36,47 +36,6 @@ UsbFs msc2;
 SdFs sd;
 
 
-bool getPartitionVolumeLabel(PFsVolume &partVol, uint8_t *pszVolName, uint16_t cb) {
-  uint8_t buf[512];
-  if (!pszVolName || (cb < 12)) return false; // don't want to deal with it
-
-  PFsFile root;
-  if (!root.openRoot(&partVol)) return false;
-  root.read(buf, 32);
-  //dump_hexbytes(buf, 32);
-
-  switch (partVol.fatType())
-  {
-    case FAT_TYPE_FAT12:
-    case FAT_TYPE_FAT16:
-    case FAT_TYPE_FAT32:
-      {
-        DirFat_t *dir;
-        dir = reinterpret_cast<DirFat_t*>(buf);
-        if ((dir->attributes & 0x08) == 0) return false; // not a directory...
-        size_t i;
-        for (i = 0; i < 11; i++) {
-          pszVolName[i]  = dir->name[i];
-        }
-        while ((i > 0) && (pszVolName[i - 1] == ' ')) i--; // trim off trailing blanks
-        pszVolName[i] = 0;
-      }
-      break;
-    case FAT_TYPE_EXFAT:
-      {
-        DirLabel_t *dir;
-        dir = reinterpret_cast<DirLabel_t*>(buf);
-        if (dir->type != EXFAT_TYPE_LABEL) return false; // not a label?
-        size_t i;
-        for (i = 0; i < dir->labelLength; i++) {
-          pszVolName[i] = dir->unicode[2 * i];
-        }
-        pszVolName[i] = 0;
-      }
-      break;
-  }
-  return true;
-}
 
 typedef struct {
   uint32_t free;
@@ -367,10 +326,10 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
   #if 1
   bool partition_valid[4];
   PFsVolume partVol[4];
-  uint8_t volName[32];
+  char volName[32];
 
   for (uint8_t i = 0; i < 4; i++) {
-    partition_valid[i] = partVol[i].begin(msc.usbDrive(), true, i+1);
+    partition_valid[i] = partVol[i].begin((USBMSCDevice*)msc.usbDrive(), true, i+1);
     Serial.printf("Partition %u valid:%u\n", i, partition_valid[i]);
   }
   for (uint8_t i = 0; i < 4; i++) {
@@ -382,7 +341,7 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
         case FAT_TYPE_FAT32: Serial.printf("%d:>> Fat32: ", i); break;
         case FAT_TYPE_EXFAT: Serial.printf("%d:>> ExFat: ", i); break;
       }
-      if (getPartitionVolumeLabel(partVol[i], volName, sizeof(volName))) {
+      if (partVol[i].getVolumeLabel(volName, sizeof(volName))) {
         Serial.printf("Volume name:(%s)", volName);
       }
       elapsedMicros em_sizes = 0;
@@ -467,7 +426,7 @@ void loop(void) {
 
     for (uint8_t i = 1; i < 5; i++) {
       PFsVolume partVol;
-      uint8_t volName[32];
+      char volName[32];
       if (!partVol.begin(sd.card(), true, i)) continue; // not a valid volume.
       partVol.chvol();
 
@@ -478,7 +437,7 @@ void loop(void) {
         case FAT_TYPE_FAT32: Serial.print("\n>> Fat32: "); break;
         case FAT_TYPE_EXFAT: Serial.print("\n>> ExFat: "); break;
       }
-      if (getPartitionVolumeLabel(partVol, volName, sizeof(volName))) {
+      if (partVol.getVolumeLabel(volName, sizeof(volName))) {
         Serial.printf("Volume name:(%s)", volName);
       }
       elapsedMicros em_sizes = 0;

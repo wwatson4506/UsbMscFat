@@ -25,11 +25,12 @@
 #ifndef PFsVolume_h
 #define PFsVolume_h
 /**
- * \file
+ * \fileF
  * \brief PFsVolume include file.
  */
 #include "PFsNew.h"
 #include <SdFat.h>
+#include "USBMSCDevice.h"
 //#include "../FatLib/FatLib.h"
 //#include "../ExFatLib/ExFatLib.h"
 
@@ -51,6 +52,7 @@ class PFsVolume {
    * \param[in] part partition to initialize.
    * \return true for success or false for failure.
    */
+  bool begin(USBMSCDevice* dev, bool setCwv = true, uint8_t part = 1);
   bool begin(BlockDevice* dev, bool setCwv = true, uint8_t part = 1);
 
   FatVolume*  getFatVol() {return m_fVol;}
@@ -122,10 +124,8 @@ class PFsVolume {
            m_xVol ? m_xVol->fatType() : 0;
   }
   /** \return the free cluster count. */
-  uint32_t freeClusterCount() const {
-    return m_fVol ? m_fVol->freeClusterCount() :
-           m_xVol ? m_xVol->freeClusterCount() : 0;
-  }
+  uint32_t freeClusterCount();
+
   /**
    * Check for BlockDevice busy.
    *
@@ -243,6 +243,16 @@ class PFsVolume {
     return m_fVol ? m_fVol->sectorsPerCluster() :
            m_xVol ? m_xVol->sectorsPerCluster() : 0;
   }
+
+  /** Retrieve a volume label name.
+   *
+   * \param[in] character buffer to re receive the name
+   *
+   * \param[in] size of buffer
+   *
+   * \return true for success or false for failure.
+   */
+  bool getVolumeLabel(char *volume_label, size_t cb) ;
 #if ENABLE_ARDUINO_SERIAL
   /** List directory contents.
    * \return true for success or false for failure.
@@ -392,5 +402,7 @@ class PFsVolume {
   FatVolume*   m_fVol = nullptr;
   ExFatVolume* m_xVol = nullptr;
   BlockDevice* m_blockDev;
+  USBMSCDevice* m_usmsci = nullptr;
+
 };
 #endif  // PFsVolume_h
