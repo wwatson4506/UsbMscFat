@@ -53,6 +53,7 @@ bool PFsFatFormatter::format(BlockDeviceInterface *blockDev, uint8_t part, PFsVo
   m_secBuf = secBuf;
   m_pr = pr;
   m_dev = blockDev;
+  m_part = part;
   
   if (!m_dev->readSector(0, (uint8_t*)&mbr)) {
     Serial.print("\nread MBR failed.\n");
@@ -61,30 +62,26 @@ bool PFsFatFormatter::format(BlockDeviceInterface *blockDev, uint8_t part, PFsVo
   }
   
   MbrPart_t *pt = &mbr.part[part];
+  m_partType = pt->type;
   m_sectorCount = getLe32(pt->totalSectors);
   m_capacityMB = (m_sectorCount + SECTORS_PER_MB - 1)/SECTORS_PER_MB;
-  
-  Serial.println("\nPFsFatFormatter::format................");
-  Serial.printf("Sector Count: %d, Sectors/MB: %d\n", m_sectorCount, SECTORS_PER_MB);
-  Serial.printf("Partition Capacity (MB): %d\n", m_capacityMB);
   
   m_dataStart = partVol.dataStartSector();
   m_sectorsPerCluster = partVol.sectorsPerCluster();
   m_relativeSectors = getLe32(pt->relativeSectors);
+  m_totalSectors = m_sectorCount;
+  m_partType =  partVol.fatType();
+
+  
+  Serial.println("\nPFsFatFormatter::format................");
+  Serial.printf("Sector Count: %d, Sectors/MB: %d\n", m_sectorCount, SECTORS_PER_MB);
+  Serial.printf("Partition Capacity (MB): %d\n", m_capacityMB);
+  Serial.printf("Fat Type: %d\n", partVol.fatType());
   
     Serial.printf("    m_dataStart:%u\n", m_dataStart);
 	Serial.printf("    m_sectorsPerCluster:%u\n", m_sectorsPerCluster);
 	Serial.printf("    m_relativeSectors:%u\n", m_relativeSectors);
 	
-	for(uint8_t i = 0; i < 3; i++) {
-		begin_CHS[i] = uint8_t(pt->beginCHS[i]);
-        Serial.print("0x"); Serial.print(begin_CHS[i], HEX); Serial.print( ',');
-	}
-	
-	for(uint8_t i = 0; i < 3; i++) {
-		end_CHS[i] = uint8_t(pt->endCHS[i]);
-		Serial.print("0x"); Serial.print(end_CHS[i], HEX); Serial.print( ',');
-	}
 	Serial.println();
 	
 	
@@ -108,7 +105,16 @@ bool PFsFatFormatter::format(BlockDeviceInterface *blockDev, uint8_t part, PFsVo
     // SDXC cards
     m_sectorsPerCluster = 128;
   }
-  rtn = m_sectorCount < 0X400000 ? makeFat16() :makeFat32();
+  
+  //rtn = m_sectorCount < 0X400000 ? makeFat16() :makeFat32();
+  if(m_partType == 16) {
+	rtn = makeFat16();
+  } else if(m_partType == 32) {
+	rtn = makeFat32();
+  }	else {
+	  rtn = false;
+  }
+ 
   if (rtn) {
     writeMsg("Format Done\r\n");
   } else {
@@ -137,8 +143,10 @@ bool PFsFatFormatter::makeFat16() {
   }
 */
 
-
   nc = (m_sectorCount - m_dataStart)/m_sectorsPerCluster;
+  m_fatSize = (nc + 2 + (BYTES_PER_SECTOR/2) - 1)/(BYTES_PER_SECTOR/2);
+
+  
   // check valid cluster count for FAT16 volume
   if (nc < 4085 || nc >= 65525) {
     writeMsg("Bad cluster count\r\n");
@@ -148,19 +156,36 @@ bool PFsFatFormatter::makeFat16() {
   m_fatStart = m_relativeSectors + m_reservedSectorCount;
   //m_totalSectors = nc*m_sectorsPerCluster
   //                 + 2*m_fatSize + m_reservedSectorCount + 32;
-  if (m_totalSectors < 65536) {
-    m_partType = 0X04;
-  } else {
-    m_partType = 0X06;
-  }
+  //if (m_totalSectors < 65536) {
+  //  m_partType = 0X04;
+  //} else {
+  //  m_partType = 0X06;
+  //}
   
   Serial.printf("partType: %d, fatStart: %d, totalSectors: %d\n", m_partType, m_fatStart, m_totalSectors);
   // write MBR
   if (!writeMbr()) {
+	return false;
+  }
+
+  initPbs();
+  setLe16(pbs->bpb.bpb16.rootDirEntryCount, FAT16_ROOT_ENTRY_COUNT);
+  setLe16(pbs->bpb.bpb16.sectorsPerFat16, m_fatSize);
+  pbs->bpb.bpb16.physicalDriveNumber = 0X80;
+  pbs->bpb.bpb16.extSignature = EXTENDED_BOOT_SIGNATURE;
+  setLe32(pbs->bpb.bpb16.volumeSerialNumber, 1234567);
+  for (size_t i = 0; i < sizeof(pbs->bpb.bpb16.volumeLabel); i++) {
+    pbs->bpb.bpb16.volumeLabel[i] = ' ';
+  }
+  pbs->bpb.bpb16.volumeType[0] = 'F';
+  pbs->bpb.bpb16.volumeType[1] = 'A';
+  pbs->bpb.bpb16.volumeType[2] = 'T';
+  pbs->bpb.bpb16.volumeType[3] = '1';
+  pbs->bpb.bpb16.volumeType[4] = '6';
+  if (!m_dev->writeSector(m_relativeSectors, m_secBuf)) {
     return false;
   }
-  
-  return 1;
+  return initFatDir(16, m_dataStart - m_fatStart);
 }
 
 //------------------------------------------------------------------------------
@@ -170,6 +195,7 @@ bool PFsFatFormatter::makeFat32() {
   uint32_t r;
   PbsFat_t* pbs = reinterpret_cast<PbsFat_t*>(m_secBuf);
   FsInfo_t* fsi = reinterpret_cast<FsInfo_t*>(m_secBuf);
+  
 /*
   m_relativeSectors = BU32;
   for (m_dataStart = 2*BU32; ; m_dataStart += BU32) {
@@ -182,11 +208,12 @@ bool PFsFatFormatter::makeFat32() {
   }
 */
     nc = (m_sectorCount - m_dataStart)/m_sectorsPerCluster;
+    m_fatSize = (nc + 2 + (BYTES_PER_SECTOR/4) - 1)/(BYTES_PER_SECTOR/4);
 
   // error if too few clusters in FAT32 volume
   if (nc < 65525) {
     writeMsg("Bad cluster count\r\n");
-    return false;
+    //return false;
   }
   m_reservedSectorCount = m_dataStart - m_relativeSectors - 2*m_fatSize;
   m_fatStart = m_relativeSectors + m_reservedSectorCount;
@@ -206,7 +233,43 @@ bool PFsFatFormatter::makeFat32() {
     return false;
   }
 
-  return 1;
+  initPbs();
+  setLe32(pbs->bpb.bpb32.sectorsPerFat32, m_fatSize);
+  setLe32(pbs->bpb.bpb32.fat32RootCluster, 2);
+  setLe16(pbs->bpb.bpb32.fat32FSInfoSector, 1);
+  setLe16(pbs->bpb.bpb32.fat32BackBootSector, 6);
+  pbs->bpb.bpb32.physicalDriveNumber = 0X80;
+  pbs->bpb.bpb32.extSignature = EXTENDED_BOOT_SIGNATURE;
+  setLe32(pbs->bpb.bpb32.volumeSerialNumber, 1234567);
+  for (size_t i = 0; i < sizeof(pbs->bpb.bpb32.volumeLabel); i++) {
+    pbs->bpb.bpb32.volumeLabel[i] = ' ';
+  }
+  pbs->bpb.bpb32.volumeType[0] = 'F';
+  pbs->bpb.bpb32.volumeType[1] = 'A';
+  pbs->bpb.bpb32.volumeType[2] = 'T';
+  pbs->bpb.bpb32.volumeType[3] = '3';
+  pbs->bpb.bpb32.volumeType[4] = '2';
+  if (!m_dev->writeSector(m_relativeSectors, m_secBuf)  ||
+      !m_dev->writeSector(m_relativeSectors + 6, m_secBuf)) {
+    return false;
+  }
+  // write extra boot area and backup
+  memset(m_secBuf, 0 , BYTES_PER_SECTOR);
+  setLe32(fsi->trailSignature, FSINFO_TRAIL_SIGNATURE);
+  if (!m_dev->writeSector(m_relativeSectors + 2, m_secBuf)  ||
+      !m_dev->writeSector(m_relativeSectors + 8, m_secBuf)) {
+    return false;
+  }
+  // write FSINFO sector and backup
+  setLe32(fsi->leadSignature, FSINFO_LEAD_SIGNATURE);
+  setLe32(fsi->structSignature, FSINFO_STRUCT_SIGNATURE);
+  setLe32(fsi->freeCount, 0XFFFFFFFF);
+  setLe32(fsi->nextFree, 0XFFFFFFFF);
+  if (!m_dev->writeSector(m_relativeSectors + 1, m_secBuf)  ||
+      !m_dev->writeSector(m_relativeSectors + 7, m_secBuf)) {
+    return false;
+  }
+  return initFatDir(32, 2*m_fatSize + m_sectorsPerCluster);
 }
 
 //------------------------------------------------------------------------------
@@ -214,27 +277,78 @@ bool PFsFatFormatter::writeMbr() {
   memset(m_secBuf, 0, BYTES_PER_SECTOR);
   MbrSector_t* mbr = reinterpret_cast<MbrSector_t*>(m_secBuf);
   
+  MbrPart_t *pt = &mbr->part[m_part];
+
   Serial.println("\nPFsFatFormatter::writeMbr.....");
 
+
 #if USE_LBA_TO_CHS
-Serial.println("Using USE_LBA_TO_CHS");
-  lbaToMbrChs(begin_CHS, m_capacityMB, m_relativeSectors);
-  lbaToMbrChs(end_CHS, m_capacityMB,
+  lbaToMbrChs(pt->beginCHS, m_capacityMB, m_relativeSectors);
+  lbaToMbrChs(pt->endCHS, m_capacityMB,
               m_relativeSectors + m_totalSectors -1);
 #else  // USE_LBA_TO_CHS
-  begin_CHS[0] = 1;
-  begin_CHS[1] = 1;
-  begin_CHS[2] = 0;
-  end_CHS[0] = 0XFE;
-  end_CHS[1] = 0XFF;
-  end_CHS[2] = 0XFF;
+  mbr->part->beginCHS[0] = 1;
+  mbr->part->beginCHS[1] = 1;
+  mbr->part->beginCHS[2] = 0;
+  mbr->part->endCHS[0] = 0XFE;
+  mbr->part->endCHS[1] = 0XFF;
+  mbr->part->endCHS[2] = 0XFF;
 #endif  // USE_LBA_TO_CHS
 
-  mbr->part->type = m_partType;
-  //setLe32(mbr->part->relativeSectors, m_relativeSectors);
-  //setLe32(mbr->part->totalSectors, m_totalSectors);
-  //setLe16(mbr->signature, MBR_SIGNATURE);
-  //return m_dev->writeSector(0, m_secBuf);
-  return 1;
+  pt->type = m_partType;
+  setLe32(pt->relativeSectors, m_relativeSectors);
+  setLe32(pt->totalSectors, m_totalSectors);
+  setLe16(mbr->signature, MBR_SIGNATURE);
+  return m_dev->writeSector(0, m_secBuf);
 }
 
+//------------------------------------------------------------------------------
+bool PFsFatFormatter::initFatDir(uint8_t fatType, uint32_t sectorCount) {
+  size_t n;
+  memset(m_secBuf, 0, BYTES_PER_SECTOR);
+  writeMsg("Writing FAT ");
+  for (uint32_t i = 1; i < sectorCount; i++) {
+    if (!m_dev->writeSector(m_fatStart + i, m_secBuf)) {
+       return false;
+    }
+    if ((i%(sectorCount/32)) == 0) {
+      writeMsg(".");
+    }
+  }
+  writeMsg("\r\n");
+  // Allocate reserved clusters and root for FAT32.
+  m_secBuf[0] = 0XF8;
+  n = fatType == 16 ? 4 : 12;
+  for (size_t i = 1; i < n; i++) {
+    m_secBuf[i] = 0XFF;
+  }
+  return m_dev->writeSector(m_fatStart, m_secBuf) &&
+         m_dev->writeSector(m_fatStart + m_fatSize, m_secBuf);
+}
+
+//------------------------------------------------------------------------------
+void PFsFatFormatter::initPbs() {
+  PbsFat_t* pbs = reinterpret_cast<PbsFat_t*>(m_secBuf);
+  memset(m_secBuf, 0, BYTES_PER_SECTOR);
+  pbs->jmpInstruction[0] = 0XEB;
+  pbs->jmpInstruction[1] = 0X76;
+  pbs->jmpInstruction[2] = 0X90;
+  for (uint8_t i = 0; i < sizeof(pbs->oemName); i++) {
+    pbs->oemName[i] = ' ';
+  }
+  setLe16(pbs->bpb.bpb16.bytesPerSector, BYTES_PER_SECTOR);
+  pbs->bpb.bpb16.sectorsPerCluster = m_sectorsPerCluster;
+  setLe16(pbs->bpb.bpb16.reservedSectorCount, m_reservedSectorCount);
+  pbs->bpb.bpb16.fatCount = 2;
+  // skip rootDirEntryCount
+  // skip totalSectors16
+  pbs->bpb.bpb16.mediaType = 0XF8;
+  // skip sectorsPerFat16
+  // skip sectorsPerTrack
+  // skip headCount
+  setLe32(pbs->bpb.bpb16.hidddenSectors, m_relativeSectors);
+  setLe32(pbs->bpb.bpb16.totalSectors32, m_totalSectors);
+  // skip rest of bpb
+  setLe16(pbs->signature, PBR_SIGNATURE);
+}
+//------------------------------------------------------------------------------

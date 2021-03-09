@@ -65,7 +65,6 @@ class PFsFatFormatter {
   uint16_t m_reservedSectorCount;
   uint8_t m_partType;
   uint8_t m_sectorsPerCluster;
-  uint8_t begin_CHS[3];
-  uint8_t end_CHS[3];
+  uint8_t m_part;
 };
 #endif  // FatFormatter_h
