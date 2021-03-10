@@ -55,6 +55,8 @@ bool PFsFatFormatter::format(BlockDeviceInterface *blockDev, uint8_t part, PFsVo
   m_dev = blockDev;
   m_part = part;
   
+  Serial.println(part);
+  
   if (!m_dev->readSector(0, (uint8_t*)&mbr)) {
     Serial.print("\nread MBR failed.\n");
     //errorPrint();
@@ -62,7 +64,6 @@ bool PFsFatFormatter::format(BlockDeviceInterface *blockDev, uint8_t part, PFsVo
   }
   
   MbrPart_t *pt = &mbr.part[part];
-  m_partType = pt->type;
   m_sectorCount = getLe32(pt->totalSectors);
   m_capacityMB = (m_sectorCount + SECTORS_PER_MB - 1)/SECTORS_PER_MB;
   
@@ -70,7 +71,7 @@ bool PFsFatFormatter::format(BlockDeviceInterface *blockDev, uint8_t part, PFsVo
   m_sectorsPerCluster = partVol.sectorsPerCluster();
   m_relativeSectors = getLe32(pt->relativeSectors);
   m_totalSectors = m_sectorCount;
-  m_partType =  partVol.fatType();
+  m_partType = pt->type;
 
   
   Serial.println("\nPFsFatFormatter::format................");
@@ -107,9 +108,11 @@ bool PFsFatFormatter::format(BlockDeviceInterface *blockDev, uint8_t part, PFsVo
   }
   
   //rtn = m_sectorCount < 0X400000 ? makeFat16() :makeFat32();
-  if(m_partType == 16) {
+  if(partVol.fatType() == 16) {
+	writeMsg("format makeFAT16\r\n");  
 	rtn = makeFat16();
-  } else if(m_partType == 32) {
+  } else if(partVol.fatType() == 32) {
+	writeMsg("format makeFAT2\r\n");  
 	rtn = makeFat32();
   }	else {
 	  rtn = false;
@@ -186,6 +189,7 @@ bool PFsFatFormatter::makeFat16() {
     return false;
   }
   return initFatDir(16, m_dataStart - m_fatStart);
+  
 }
 
 //------------------------------------------------------------------------------
@@ -270,29 +274,29 @@ bool PFsFatFormatter::makeFat32() {
     return false;
   }
   return initFatDir(32, 2*m_fatSize + m_sectorsPerCluster);
+
+  return 1;
 }
 
 //------------------------------------------------------------------------------
 bool PFsFatFormatter::writeMbr() {
   memset(m_secBuf, 0, BYTES_PER_SECTOR);
   MbrSector_t* mbr = reinterpret_cast<MbrSector_t*>(m_secBuf);
-  
-  MbrPart_t *pt = &mbr->part[m_part];
+    MbrPart_t *pt = &mbr->part[m_part];
 
-  Serial.println("\nPFsFatFormatter::writeMbr.....");
-
+if (!m_dev->readSector(0, m_secBuf)) Serial.println("DIDN't GOT SECTOR BUFFER");
 
 #if USE_LBA_TO_CHS
   lbaToMbrChs(pt->beginCHS, m_capacityMB, m_relativeSectors);
   lbaToMbrChs(pt->endCHS, m_capacityMB,
               m_relativeSectors + m_totalSectors -1);
 #else  // USE_LBA_TO_CHS
-  mbr->part->beginCHS[0] = 1;
-  mbr->part->beginCHS[1] = 1;
-  mbr->part->beginCHS[2] = 0;
-  mbr->part->endCHS[0] = 0XFE;
-  mbr->part->endCHS[1] = 0XFF;
-  mbr->part->endCHS[2] = 0XFF;
+  pt->beginCHS[0] = 1;
+  pt->beginCHS[1] = 1;
+  pt->beginCHS[2] = 0;
+  pt->endCHS[0] = 0XFE;
+  pt->endCHS[1] = 0XFF;
+  pt->endCHS[2] = 0XFF;
 #endif  // USE_LBA_TO_CHS
 
   pt->type = m_partType;
@@ -300,6 +304,8 @@ bool PFsFatFormatter::writeMbr() {
   setLe32(pt->totalSectors, m_totalSectors);
   setLe16(mbr->signature, MBR_SIGNATURE);
   return m_dev->writeSector(0, m_secBuf);
+
+  return true;
 }
 
 //------------------------------------------------------------------------------
