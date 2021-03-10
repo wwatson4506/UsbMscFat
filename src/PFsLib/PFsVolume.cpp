@@ -64,46 +64,54 @@ PFsFile PFsVolume::open(const char *path, oflag_t oflag) {
   tmpFile.open(this, path, oflag);
   return tmpFile;
 }
+
+//extern void dump_hexbytes(const void *ptr, int len);
+
 bool PFsVolume::getVolumeLabel(char *volume_label, size_t cb) 
 {
   char buf[32];
   if (!volume_label || (cb < 12)) return false; // don't want to deal with it
+  *volume_label = 0; // make sure if we fail later we return empty string as well.
 
   PFsFile root;
   if (!root.openRoot(this)) return false;
-  root.read(buf, 32);
+  while (root.read(buf, 32) == 32) { 
+    //dump_hexbytes(buf, 32);
 
-  switch (fatType())
-  {
-    case FAT_TYPE_FAT12:
-    case FAT_TYPE_FAT16:
-    case FAT_TYPE_FAT32:
-      {
-        DirFat_t *dir;
-        dir = reinterpret_cast<DirFat_t*>(buf);
-        if ((dir->attributes & 0x08) == 0) return false; // not a directory...
-        size_t i;
-        for (i = 0; i < 11; i++) {
-          volume_label[i]  = dir->name[i];
+    switch (fatType())
+    {
+      case FAT_TYPE_FAT12:
+      case FAT_TYPE_FAT16:
+      case FAT_TYPE_FAT32:
+        {
+          DirFat_t *dir;
+          dir = reinterpret_cast<DirFat_t*>(buf);
+          if (dir->attributes != 0x08) continue; // not a volume label...
+          size_t i;
+          for (i = 0; i < 11; i++) {
+            volume_label[i]  = dir->name[i];
+          }
+          while ((i > 0) && (volume_label[i - 1] == ' ')) i--; // trim off trailing blanks
+          volume_label[i] = 0;
         }
-        while ((i > 0) && (volume_label[i - 1] == ' ')) i--; // trim off trailing blanks
-        volume_label[i] = 0;
-      }
-      break;
-    case FAT_TYPE_EXFAT:
-      {
-        DirLabel_t *dir;
-        dir = reinterpret_cast<DirLabel_t*>(buf);
-        if (dir->type != EXFAT_TYPE_LABEL) return false; // not a label?
-        size_t i;
-        for (i = 0; i < dir->labelLength; i++) {
-          volume_label[i] = dir->unicode[2 * i];
+        break;
+      case FAT_TYPE_EXFAT:
+        {
+          DirLabel_t *dir;
+          dir = reinterpret_cast<DirLabel_t*>(buf);
+          if (dir->type != EXFAT_TYPE_LABEL) continue; // not a label?
+          size_t i;
+          for (i = 0; i < dir->labelLength; i++) {
+            volume_label[i] = dir->unicode[2 * i];
+          }
+          volume_label[i] = 0;
         }
-        volume_label[i] = 0;
-      }
-      break;
+        break;
+    }
+    return true;
   }
-  return true;
+  //Serial.println("VolumeLabel not found");
+  return false; // no volume label was found
 
 }
 
