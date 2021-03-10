@@ -65,7 +65,7 @@ PFsFile PFsVolume::open(const char *path, oflag_t oflag) {
   return tmpFile;
 }
 
-//extern void dump_hexbytes(const void *ptr, int len);
+extern void dump_hexbytes(const void *ptr, int len);
 
 bool PFsVolume::getVolumeLabel(char *volume_label, size_t cb) 
 {
@@ -76,7 +76,7 @@ bool PFsVolume::getVolumeLabel(char *volume_label, size_t cb)
   PFsFile root;
   if (!root.openRoot(this)) return false;
   while (root.read(buf, 32) == 32) { 
-    //dump_hexbytes(buf, 32);
+    dump_hexbytes(buf, 32);
 
     switch (fatType())
     {
@@ -108,10 +108,91 @@ bool PFsVolume::getVolumeLabel(char *volume_label, size_t cb)
         }
         break;
     }
+    root.close();
     return true;
   }
   //Serial.println("VolumeLabel not found");
+  root.close();
   return false; // no volume label was found
+
+}
+
+bool PFsVolume::setVolumeLabel(char *volume_label) 
+{
+  char buf[32];
+
+  if (!volume_label ) return false; // don't want to deal with it yet
+  if (*volume_label == 0) return false; // dito probably in both cases maybe delete label?
+  PFsFile root;
+
+  uint8_t fat_type = fatType();
+
+  if (!root.openRoot(this)) return false;
+  bool label_found = false;
+
+  while (root.read(buf, 32) == 32) { 
+    //dump_hexbytes(buf, 32);
+
+    if ((fat_type == FAT_TYPE_FAT16) || (fat_type == FAT_TYPE_FAT32)) {
+      //N  N  N  N  N  N  N  N  N  N  N  A  CF CT CT CT CD CD AD AD FC FC MT MT MD MD FC FC SZ SZ SZ SZ
+      //56 4F 4C 46 41 54 33 32 20 20 20 08 00 00 00 00 00 00 00 00 00 00 5B 84 58 52 00 00 00 00 00 00 :VOLFAT32   ...........[.XR......
+      //56 4F 4C 46 41 54 31 36 20 20 20 08 00 00 00 00 00 00 00 00 00 00 51 84 58 52 00 00 00 00 00 00 :VOLFAT16   ...........Q.XR......
+      DirFat_t *dir;
+      dir = reinterpret_cast<DirFat_t*>(buf);
+      if (dir->attributes != 0x08) continue; // not a volume label...
+      label_found = true;
+      break;
+     } else if (fat_type == FAT_TYPE_EXFAT) {
+      //Ty len < Unicode name                                                  > R  R  R  R  R  R  R  R
+      //83 08 56 00 6F 00 6C 00 45 00 58 00 46 00 41 00 54 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 :..V.o.l.E.X.F.A.T...............
+      DirLabel_t *dir;
+      dir = reinterpret_cast<DirLabel_t*>(buf);
+      if (dir->type != EXFAT_TYPE_LABEL) continue; // not a label?
+      label_found = true;
+      break;
+    } else  return false;
+
+  }
+  
+  if (label_found) root.seekCur(-32);
+  memset(buf, 0, 32);  // clear out everythign.
+
+  if (fat_type == FAT_TYPE_EXFAT) {
+    DirLabel_t *dir;
+    dir = reinterpret_cast<DirLabel_t*>(buf);
+
+    uint8_t cb = strlen(volume_label);
+    if (cb > 11) cb = 11; // truncate off. 
+    dir->type = EXFAT_TYPE_LABEL; 
+    dir->labelLength = cb;
+    uint8_t *puni = dir->unicode;
+    while (cb--) {
+      *puni = *volume_label++;
+      puni += 2;
+    }
+  } else {
+    // Fat16/32
+    // Lets get the date and time to set the volume labels modify values
+    DirFat_t *dir;
+    dir = reinterpret_cast<DirFat_t*>(buf);
+
+    if (FsDateTime::callback) {
+      uint16_t cur_date;
+      uint16_t cur_time;
+      uint8_t cur_ms10;
+      FsDateTime::callback(&cur_date, &cur_time, &cur_ms10);
+      setLe16(dir->modifyTime, cur_time);
+      setLe16(dir->modifyDate, cur_date);
+    }
+    for (size_t i = 0; i < 11; i++) {
+      dir->name[i] = *volume_label? *volume_label++ : ' '; // fill in the 11 spots trailing blanks 
+    }
+  }
+
+  // Now lets try to write it out...
+  bool write_ok = (root.write(buf, 32) == 32);
+  root.close();
+  return write_ok; // no volume label was found
 
 }
 
@@ -203,10 +284,9 @@ uint32_t PFsVolume::getFSInfoSectorFreeClusterCount() {
   FsInfo_t *pfsi = reinterpret_cast<FsInfo_t*>(sector_buffer);
 
   // check signatures:
-  if (memcmp(pfsi->leadSignature, "RRaA", 4) != 0) Serial.println("Lead Sig wrong");    
-  if (memcmp(pfsi->structSignature, "rrAa", 4) != 0) Serial.println("struct Sig wrong");    
-  static const uint8_t _trail_sig[4] = {0x00, 0x00, 0x55, 0xAA};
-  if (memcmp(pfsi->trailSignature, _trail_sig, 4) != 0) Serial.println("Trail Sig wrong");    
+  if (getLe32(pfsi->leadSignature) !=  FSINFO_LEAD_SIGNATURE) Serial.println("Lead Sig wrong");
+  if (getLe32(pfsi->structSignature) !=  FSINFO_STRUCT_SIGNATURE) Serial.println("struct Sig wrong");    
+  if (getLe32(pfsi->trailSignature) !=  FSINFO_TRAIL_SIGNATURE) Serial.println("Trail Sig wrong");    
   uint32_t free_count = getLe32(pfsi->freeCount);
   return free_count;
 
@@ -245,6 +325,7 @@ bool PFsVolume::setUpdateFSInfoSectorFreeClusterCount(uint32_t free_count) {
   setLe32(pfsi->structSignature, FSINFO_STRUCT_SIGNATURE);
   setLe32(pfsi->freeCount, free_count);
   setLe32(pfsi->nextFree, 0XFFFFFFFF);
+  setLe32(pfsi->trailSignature, FSINFO_TRAIL_SIGNATURE);
   if (!m_blockDev->writeSector(volumeStartSector+infoSector, sector_buffer)) return (uint32_t) false;
   return true;
 }

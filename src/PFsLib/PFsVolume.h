@@ -257,6 +257,14 @@ class PFsVolume {
    * \return true for success or false for failure.
    */
   bool getVolumeLabel(char *volume_label, size_t cb) ;
+
+  /** set a volume label name.
+   *
+   * \param[in] Null terminated string with new volume label
+   *
+   * \return true for success or false for failure.
+   */
+  bool setVolumeLabel(char *volume_label) ;
 #if ENABLE_ARDUINO_SERIAL
   /** List directory contents.
    * \return true for success or false for failure.
