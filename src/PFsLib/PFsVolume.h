@@ -126,6 +126,10 @@ class PFsVolume {
   /** \return the free cluster count. */
   uint32_t freeClusterCount();
 
+  // Only valid for Fat32
+  uint32_t getFSInfoSectorFreeClusterCount();
+  bool setUpdateFSInfoSectorFreeClusterCount(uint32_t free_count = (uint32_t)-1);
+
   /**
    * Check for BlockDevice busy.
    *
@@ -403,6 +407,7 @@ class PFsVolume {
   ExFatVolume* m_xVol = nullptr;
   BlockDevice* m_blockDev;
   USBMSCDevice* m_usmsci = nullptr;
+  uint8_t m_part;
 
 };
 #endif  // PFsVolume_h

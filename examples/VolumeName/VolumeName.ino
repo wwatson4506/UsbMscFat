@@ -95,42 +95,6 @@ uint32_t GetFreeClusterCount(USBmscInterface *usmsci, PFsVolume &partVol)
 
 
 //-------------------------------------------------------------------------------------------------
-uint32_t ReadFat32InfoSectorFree(BlockDeviceInterface *blockDev, uint8_t part) {
-  uint8_t sector_buffer[512];
-
-  
-  if (!blockDev->readSector(0, sector_buffer)) return (uint32_t)-1;
-  MbrSector_t *mbr = reinterpret_cast<MbrSector_t*>(sector_buffer);
-  MbrPart_t *pt = &mbr->part[part - 1];
-  BpbFat32_t* bpb;
-  if ((pt->type != 11) && (pt->type != 12))  return (uint32_t)-1;
-
-  uint32_t volumeStartSector = getLe32(pt->relativeSectors);
-  if (!blockDev->readSector(volumeStartSector, sector_buffer)) return (uint32_t)-1;
-  pbs_t *pbs = reinterpret_cast<pbs_t*> (sector_buffer);
-  bpb = reinterpret_cast<BpbFat32_t*>(pbs->bpb);
-  
-  //Serial.println("\nReadFat32InfoSectorFree BpbFat32_t sector");
-  //dump_hexbytes(sector_buffer, 512);
-  uint16_t infoSector = getLe16(bpb->fat32FSInfoSector); 
-
-  // I am assuming this sector is based off of the volumeStartSector... So try reading from there.
-  //Serial.printf("Try to read Info sector (%u)\n", infoSector); Serial.flush(); 
-  if (!blockDev->readSector(volumeStartSector+infoSector, sector_buffer)) return (uint32_t)-1;
-  //dump_hexbytes(sector_buffer, 512);
-  FsInfo_t *pfsi = reinterpret_cast<FsInfo_t*>(sector_buffer);
-
-  // check signatures:
-  if (memcmp(pfsi->leadSignature, "RRaA", 4) != 0) Serial.println("Lead Sig wrong");    
-  if (memcmp(pfsi->structSignature, "rrAa", 4) != 0) Serial.println("struct Sig wrong");    
-  static const uint8_t _trail_sig[4] = {0x00, 0x00, 0x55, 0xAA};
-  if (memcmp(pfsi->trailSignature, _trail_sig, 4) != 0) Serial.println("Trail Sig wrong");    
-  uint32_t free_count = getLe32(pfsi->freeCount);
-  return free_count;
-
-}
-
-//-------------------------------------------------------------------------------------------------
 
 bool mbrDmpExtended(BlockDeviceInterface *blockDev, uint32_t sector, uint8_t indent) {
   MbrSector_t mbr;
@@ -356,7 +320,7 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
       Serial.printf("    Free Clusters: API: %u by CB:%u time us: %u\n", free_cluster_count, free_clusters_fast, (uint32_t)em_sizes);
       
       em_sizes = 0; // lets see how long this one takes. 
-      uint32_t free_clusters_info = ReadFat32InfoSectorFree(msc.usbDrive(), i+1);
+      uint32_t free_clusters_info = partVol[i].getFSInfoSectorFreeClusterCount();
       Serial.printf("    Free Clusters: Info: %u time us: %u\n", free_clusters_info, (uint32_t)em_sizes);
 
 

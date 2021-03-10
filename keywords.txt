@@ -8,6 +8,8 @@
 
 MSC	    KEYWORD1
 File	KEYWORD1
+PFsVolume	KEYWORD1
+PFsFile	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2)
@@ -21,7 +23,11 @@ open	KEYWORD2
 close	KEYWORD2
 seek	KEYWORD2
 position	KEYWORD2
-size	KEYWORD2	
+size	KEYWORD2
+getFSInfoSectorFreeClusterCount	KEYWORD2
+setUpdateFSInfoSectorFreeClusterCount	KEYWORD2
+getVolumeLabel	KEYWORD2
+
 
 #######################################
 # Constants (LITERAL1)

@@ -34,6 +34,7 @@ bool PFsVolume::begin(USBMSCDevice* dev, bool setCwv, uint8_t part) {
 bool PFsVolume::begin(BlockDevice* blockDev, bool setCwv, uint8_t part) {
   Serial.printf("PFsVolume::begin(%x, %u)\n", (uint32_t)blockDev, part);
   m_blockDev = blockDev;
+  m_part = part;
   m_fVol = nullptr;
   m_xVol = new (m_volMem) ExFatVolume;
   if (m_xVol && m_xVol->begin(m_blockDev, setCwv, part)) {
@@ -165,6 +166,79 @@ uint32_t PFsVolume::freeClusterCount()  {
 //  digitalWriteFast(0, LOW);
 
   return gfcc.free;
+}
+
+uint32_t PFsVolume::getFSInfoSectorFreeClusterCount() {
+  uint8_t sector_buffer[512];
+  if (fatType() != FAT_TYPE_FAT32) return (uint32_t)-1;
+
+  // We could probably avoid this read if our class remembered the starting sector number for the partition...
+  if (!m_blockDev->readSector(0, sector_buffer)) return (uint32_t)-1;
+  MbrSector_t *mbr = reinterpret_cast<MbrSector_t*>(sector_buffer);
+  MbrPart_t *pt = &mbr->part[m_part - 1];
+  BpbFat32_t* bpb;
+  if ((pt->type != 11) && (pt->type != 12))  return (uint32_t)-1;
+
+  uint32_t volumeStartSector = getLe32(pt->relativeSectors);
+  if (!m_blockDev->readSector(volumeStartSector, sector_buffer)) return (uint32_t)-1;
+  pbs_t *pbs = reinterpret_cast<pbs_t*> (sector_buffer);
+  bpb = reinterpret_cast<BpbFat32_t*>(pbs->bpb);
+  
+  //Serial.println("\nReadFat32InfoSectorFree BpbFat32_t sector");
+  //dump_hexbytes(sector_buffer, 512);
+  uint16_t infoSector = getLe16(bpb->fat32FSInfoSector); 
+
+  // I am assuming this sector is based off of the volumeStartSector... So try reading from there.
+  //Serial.printf("Try to read Info sector (%u)\n", infoSector); Serial.flush(); 
+  if (!m_blockDev->readSector(volumeStartSector+infoSector, sector_buffer)) return (uint32_t)-1;
+  //dump_hexbytes(sector_buffer, 512);
+  FsInfo_t *pfsi = reinterpret_cast<FsInfo_t*>(sector_buffer);
+
+  // check signatures:
+  if (memcmp(pfsi->leadSignature, "RRaA", 4) != 0) Serial.println("Lead Sig wrong");    
+  if (memcmp(pfsi->structSignature, "rrAa", 4) != 0) Serial.println("struct Sig wrong");    
+  static const uint8_t _trail_sig[4] = {0x00, 0x00, 0x55, 0xAA};
+  if (memcmp(pfsi->trailSignature, _trail_sig, 4) != 0) Serial.println("Trail Sig wrong");    
+  uint32_t free_count = getLe32(pfsi->freeCount);
+  return free_count;
+
+
+}
+
+bool PFsVolume::setUpdateFSInfoSectorFreeClusterCount(uint32_t free_count) {
+  uint8_t sector_buffer[512];
+  if (fatType() != FAT_TYPE_FAT32) return (uint32_t)false;
+
+  if (free_count == (uint32_t)-1) free_count = freeClusterCount();
+
+  // We could probably avoid this read if our class remembered the starting sector number for the partition...
+  if (!m_blockDev->readSector(0, sector_buffer)) return (uint32_t)-1;
+  MbrSector_t *mbr = reinterpret_cast<MbrSector_t*>(sector_buffer);
+  MbrPart_t *pt = &mbr->part[m_part - 1];
+  BpbFat32_t* bpb;
+  if ((pt->type != 11) && (pt->type != 12))  return (uint32_t)-1;
+
+  uint32_t volumeStartSector = getLe32(pt->relativeSectors);
+  if (!m_blockDev->readSector(volumeStartSector, sector_buffer)) return (uint32_t)-1;
+  pbs_t *pbs = reinterpret_cast<pbs_t*> (sector_buffer);
+  bpb = reinterpret_cast<BpbFat32_t*>(pbs->bpb);
+  
+  //Serial.println("\nReadFat32InfoSectorFree BpbFat32_t sector");
+  //dump_hexbytes(sector_buffer, 512);
+  uint16_t infoSector = getLe16(bpb->fat32FSInfoSector); 
+
+  // OK we now need to fill in the the sector with the appropriate information...
+  // Not sure if we should read it first or just blast out new data...
+  FsInfo_t *pfsi = reinterpret_cast<FsInfo_t*>(sector_buffer);
+  memset(sector_buffer, 0 , 512);
+
+  // write FSINFO sector and backup
+  setLe32(pfsi->leadSignature, FSINFO_LEAD_SIGNATURE);
+  setLe32(pfsi->structSignature, FSINFO_STRUCT_SIGNATURE);
+  setLe32(pfsi->freeCount, free_count);
+  setLe32(pfsi->nextFree, 0XFFFFFFFF);
+  if (!m_blockDev->writeSector(volumeStartSector+infoSector, sector_buffer)) return (uint32_t) false;
+  return true;
 }
 
 
