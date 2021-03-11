@@ -4,14 +4,13 @@
 //  Works with SD cards and USB mass storage drives.
 
 #include "Arduino.h"
+#define DBG_FILE "VolumeName.ino"
 #include "mscFS.h"
 
 // Setup USBHost_t36 and as many HUB ports as needed.
 USBHost myusb;
 USBHub hub1(myusb);
 USBHub hub2(myusb);
-USBHub hub3(myusb);
-USBHub hub4(myusb);
 
 #define SHOW_CLOCK_CARAT 1
 IntervalTimer clocked100ms;
@@ -287,7 +286,6 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
   //  mbrDmp( &msc );
   mbrDmp( msc.usbDrive() );
 
-  #if 1
   bool partition_valid[4];
   PFsVolume partVol[4];
   char volName[32];
@@ -327,33 +325,24 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
       partVol[i].ls();
     }
   }
+ } 
 
-  #else
-  for (uint8_t i = 1; i < 5; i++) {
-    PFsVolume partVol;
-    uint8_t volName[32];
-    if (!partVol.begin(msc.usbDrive(), true, i)) continue; // not a valid volume.
-    partVol.chvol();
-
-    switch (partVol.fatType())
-    {
-      case FAT_TYPE_FAT12: Serial.print("\n>> Fat12: "); break;
-      case FAT_TYPE_FAT16: Serial.print("\n>> Fat16: "); break;
-      case FAT_TYPE_FAT32: Serial.print("\n>> Fat32: "); break;
-      case FAT_TYPE_EXFAT: Serial.print("\n>> ExFat: "); break;
-    }
-    if (getPartitionVolumeLabel(partVol, volName, sizeof(volName))) {
-      Serial.printf("Volume name:(%s)", volName);
-    }
-    elapsedMicros em_sizes = 0;
-    uint64_t used_size =  (uint64_t)(partVol.clusterCount() - partVol.freeClusterCount())
-                          * (uint64_t)partVol.bytesPerCluster();
-    uint64_t total_size = (uint64_t)partVol.clusterCount() * (uint64_t)partVol.bytesPerCluster();
-    Serial.printf(" Partition Total Size:%llu Used:%llu time us: %u\n", total_size, used_size, (uint32_t)em_sizes);
-
-    partVol.ls();
+void SetVolumeLabel(BlockDeviceInterface *blockDev, uint8_t part, char *new_name)  {
+  PFsVolume partVol;
+  Serial.printf("\nTry to set device:%x part:%u to:%s\n", (uint32_t)blockDev, part, new_name);
+  if (!partVol.begin(blockDev, true, part)) {
+    Serial.println("*** Failed to open partition***");
+    return;
   }
-  #endif
+
+  char volName[20];
+  if (partVol.getVolumeLabel(volName, sizeof(volName))) {
+    Serial.printf("Previous Volume name:(%s)", volName);
+  } else Serial.println("Failed to retrieve previous Volume name");
+
+  if (partVol.setVolumeLabel(new_name)) Serial.println("Set new name *** succeeded ***");
+  else Serial.println("Set new name *** failed ***");
+
 }
 
 //================================================================
@@ -366,7 +355,8 @@ void loop(void) {
     elapsedMillis em = 0;
     while (!msDrive1 && (em < 5000) )  myusb.Task();
   }
-  if (!msDrive2) {
+  // if no hub then only one drive could be plugged in...
+  if ((hub1 || hub2) && !msDrive2) {
     Serial.println("Waiting up to 5 seconds for USB drive 2");
     elapsedMillis em = 0;
     while (!msDrive2 && (em < 5000) )  myusb.Task();
@@ -417,6 +407,35 @@ void loop(void) {
   Serial.println("done...");
 
   Serial.println("Press any key to run again");
-  while (Serial.read() == -1);
+  Serial.println("Or enter new Volume label: <dev:12s> <Par> Name");
+  while (Serial.available() == 0); // wait for something. 
+  // Real quick and dirty!!!
+  int chDrive = Serial.read();
+  Serial.read(); // Assume blank 
+  int chPartition = Serial.read();
+  Serial.read(); 
+  char new_volume_name[12];
+  int ii = 0;
+  for (ii=0; ii < 12; ii++) {
+    new_volume_name[ii] = Serial.read();
+    if (new_volume_name[ii] < ' ' ) {
+      new_volume_name[ii] = 0;
+      break;
+    }
+  }
+
+  if ((chPartition >= '1') && (chPartition <= '5')) {
+    uint8_t part = chPartition - '0';
+    switch (chDrive) {
+      case '1': SetVolumeLabel(msc1.usbDrive(), part, new_volume_name); break;
+      case '2': SetVolumeLabel(msc2.usbDrive(), part, new_volume_name); break;
+      case 's': SetVolumeLabel(sd.card(), part, new_volume_name); break;
+
+
+
+    }
+
+  }
+
   while (Serial.read() != -1);
 }
