@@ -88,7 +88,7 @@ bool PFsVolume::getVolumeLabel(char *volume_label, size_t cb)
     } else {
       root_dir = m_fVol->rootDirStart();
     }
-    Serial.printf("\n$$$ PFsVolume::getVolumeLabel(%u): %u %u\n", fat_type, root_dir, root_dir_size);
+    //Serial.printf("\n$$$ PFsVolume::getVolumeLabel(%u): %u %u\n", fat_type, root_dir, root_dir_size);
     uint16_t index_in_sector=0;
     m_blockDev->readSector(root_dir, buf);
     while (root_dir_size) {
@@ -118,9 +118,9 @@ bool PFsVolume::getVolumeLabel(char *volume_label, size_t cb)
     uint32_t rdc = m_xVol->rootDirectoryCluster();
     uint32_t root_dir_size = m_xVol->rootLength();
     uint32_t spc = m_xVol->sectorsPerCluster();
-    Serial.printf("\n$$$ PFsVolume::getVolumeLabel(Ex): %u %x %x %u\n", root_dir_size, chs, rdc, spc);
+    //Serial.printf("\n$$$ PFsVolume::getVolumeLabel(Ex): %u %x %x %u\n", root_dir_size, chs, rdc, spc);
     uint32_t root_dir = chs + (rdc-2)*spc;
-    Serial.printf("  $$$ Guess sector: %x\n", root_dir);
+    //Serial.printf("  $$$ Guess sector: %x\n", root_dir);
 
     uint16_t index_in_sector=0;
     m_blockDev->readSector(root_dir, buf);
@@ -135,7 +135,8 @@ bool PFsVolume::getVolumeLabel(char *volume_label, size_t cb)
         }
         volume_label[i] = 0;
         return true;
-      }
+      } else if (dir->type == 0) break; // I believe this marks the end...
+
       index_in_sector += 32;  // increment to next entry...
       root_dir_size-=32;
       if (index_in_sector >= 512 && root_dir_size) {
@@ -160,7 +161,7 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
   if (m_fVol)
   {
     FatFile rootFat;
-    DirFat_t *dir;
+    DirFat_t *dir = nullptr;
     if (!rootFat.openRoot(m_fVol)) return false;
     uint32_t root_dir_size = rootFat.dirSize(); // how big is this directory...
     rootFat.close();
@@ -170,13 +171,13 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
     } else {
       root_dir = m_fVol->rootDirStart();
     }
-    Serial.printf("\n$$$ PFsVolume::getVolumeLabel(%u): %u %u\n", fat_type, root_dir, root_dir_size);
+    //Serial.printf("\n$$$ PFsVolume::setVolumeLabel(%u): %u %u\n", fat_type, root_dir, root_dir_size);
     uint16_t index_in_sector=0;
     uint32_t first_deleted_entry_sector = 0;
     uint16_t first_deleted_entry_index = 0;
 
     m_blockDev->readSector(root_dir, buf);
-    dump_hexbytes(buf, 512);
+    //dump_hexbytes(buf, 512);
     while (root_dir_size) {
       dir = reinterpret_cast<DirFat_t*>(&buf[index_in_sector]);
       if (dir->name[0] == FAT_NAME_DELETED) {
@@ -195,15 +196,15 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
       if (index_in_sector >= 512 && root_dir_size) {
         root_dir++;
         m_blockDev->readSector(root_dir, buf);
-        Serial.printf(">> %x\n", root_dir);
-        dump_hexbytes(buf, 512);
+        //Serial.printf(">> %x\n", root_dir);
+        //dump_hexbytes(buf, 512);
         index_in_sector = 0;
       }
     }
     // Lets see if we found something...
     if (!volume_label || !*volume_label) {
       if (label_found) {
-        Serial.printf("Found volume label - delete\now");
+        Serial.printf("Found volume label - deleted\n");
         dir->name[0] = FAT_NAME_DELETED;  // mark item as deleted
         dir->attributes = 0; 
         m_blockDev->writeSector(root_dir, buf);
@@ -242,128 +243,63 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
     }
 
   } else if (m_xVol) {
-    #if 0
+    DirLabel_t *dir = nullptr;
     uint32_t chs = m_xVol->clusterHeapStartSector();
     uint32_t rdc = m_xVol->rootDirectoryCluster();
     uint32_t root_dir_size = m_xVol->rootLength();
     uint32_t spc = m_xVol->sectorsPerCluster();
-    Serial.printf("\n$$$ PFsVolume::getVolumeLabel(Ex): %u %x %x %u\n", root_dir_size, chs, rdc, spc);
+    //Serial.printf("\n$$$ PFsVolume::setVolumeLabel(Ex): %u %x %x %u\n", root_dir_size, chs, rdc, spc);
     uint32_t root_dir = chs + (rdc-2)*spc;
-    Serial.printf("  $$$ Guess sector: %x\n", root_dir);
+    //Serial.printf("  $$$ Guess sector: %x\n", root_dir);
 
     uint16_t index_in_sector=0;
     m_blockDev->readSector(root_dir, buf);
+    //dump_hexbytes(buf, 512);
     while (root_dir_size) {
-      DirLabel_t *dir;
       dir = reinterpret_cast<DirLabel_t*>(&buf[index_in_sector]);
       //if (dir->name[0] == 0) break;  // at end of list...
       if (dir->type == EXFAT_TYPE_LABEL) {
-        size_t i;
-        for (i = 0; i < dir->labelLength; i++) {
-          volume_label[i] = dir->unicode[2 * i];
-        }
-        volume_label[i] = 0;
-        return true;
-      }
+        label_found = true;
+        break;
+      } else if (dir->type == 0) break;
       index_in_sector += 32;  // increment to next entry...
       root_dir_size-=32;
       if (index_in_sector >= 512 && root_dir_size) {
         root_dir++;
         m_blockDev->readSector(root_dir, buf);
         index_in_sector = 0;
+        //Serial.println("---");
+        //dump_hexbytes(buf, 512);
       }
     }
-    #endif
+    // Lets see if we found something...
+    if (!volume_label || !*volume_label) {
+      if (label_found) {
+        Serial.printf("Found volume label - deleted\n");
+        dir->type &= 0x7f;  // mark item as deleted
+        m_blockDev->writeSector(root_dir, buf);
+      }
+      return true;
+    }
+    // Lets see where we should write...
+    // 
+    if (label_found || (dir->type == 0)) {  // or found a spot for it.
+      uint8_t cb = strlen(volume_label);
+      if (cb > 11) cb = 11; // truncate off. 
+      dir->type = EXFAT_TYPE_LABEL; 
+      dir->labelLength = cb;
+      uint8_t *puni = dir->unicode;
+      while (cb--) {
+        *puni = *volume_label++;
+        puni += 2;
+      }
+      m_blockDev->writeSector(root_dir, buf);
+      return true;
+    }
   }
 
   return false; // no volume label was found
 }
-#if 0
-  char buf[32];
-
-  //if (!volume_label ) return false; // don't want to deal with it yet
-  //if (*volume_label == 0) return false; // dito probably in both cases maybe delete label?
-  PFsFile root;
-  PFsFile rootRW;
-
-  uint8_t fat_type = fatType();
-
-  if (!root.openRoot(this)) return false;
-
-  if (!rootRW.open(&root, (const char *)"/",  O_RDWR)) {
-    Serial.println("Failed to open rootRW");
-    return false;
-  }
-
-  bool label_found = false;
-
-  while (rootRW.read(buf, 32) == 32) { 
-    //dump_hexbytes(buf, 32);
-
-    if ((fat_type == FAT_TYPE_FAT16) || (fat_type == FAT_TYPE_FAT32)) {
-      //N  N  N  N  N  N  N  N  N  N  N  A  CF CT CT CT CD CD AD AD FC FC MT MT MD MD FC FC SZ SZ SZ SZ
-      //56 4F 4C 46 41 54 33 32 20 20 20 08 00 00 00 00 00 00 00 00 00 00 5B 84 58 52 00 00 00 00 00 00 :VOLFAT32   ...........[.XR......
-      //56 4F 4C 46 41 54 31 36 20 20 20 08 00 00 00 00 00 00 00 00 00 00 51 84 58 52 00 00 00 00 00 00 :VOLFAT16   ...........Q.XR......
-      DirFat_t *dir;
-      dir = reinterpret_cast<DirFat_t*>(buf);
-      if (dir->attributes != 0x08) continue; // not a volume label...
-      label_found = true;
-      break;
-     } else if (fat_type == FAT_TYPE_EXFAT) {
-      //Ty len < Unicode name                                                  > R  R  R  R  R  R  R  R
-      //83 08 56 00 6F 00 6C 00 45 00 58 00 46 00 41 00 54 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 :..V.o.l.E.X.F.A.T...............
-      DirLabel_t *dir;
-      dir = reinterpret_cast<DirLabel_t*>(buf);
-      if (dir->type != EXFAT_TYPE_LABEL) continue; // not a label?
-      label_found = true;
-      break;
-    } else  return false;
-
-  }
-  
-
-  memset(buf, 0, 32);  // clear out everythign.
-  if (fat_type == FAT_TYPE_EXFAT) {
-    DirLabel_t *dir;
-    dir = reinterpret_cast<DirLabel_t*>(buf);
-
-    uint8_t cb = strlen(volume_label);
-    if (cb > 11) cb = 11; // truncate off. 
-    dir->type = EXFAT_TYPE_LABEL; 
-    dir->labelLength = cb;
-    uint8_t *puni = dir->unicode;
-    while (cb--) {
-      *puni = *volume_label++;
-      puni += 2;
-    }
-  } else {
-    // Fat16/32
-    // Lets get the date and time to set the volume labels modify values
-    DirFat_t *dir;
-    dir = reinterpret_cast<DirFat_t*>(buf);
-
-    if (FsDateTime::callback) {
-      uint16_t cur_date;
-      uint16_t cur_time;
-      uint8_t cur_ms10;
-      FsDateTime::callback(&cur_date, &cur_time, &cur_ms10);
-      setLe16(dir->modifyTime, cur_time);
-      setLe16(dir->modifyDate, cur_date);
-    }
-    for (size_t i = 0; i < 11; i++) {
-      dir->name[i] = *volume_label? *volume_label++ : ' '; // fill in the 11 spots trailing blanks 
-    }
-  }
-
-  // Now lets try to write it out...
-  if (label_found) rootRW.seekCur(-32);
-  bool write_ok = (rootRW.write(buf, 32) == 32);
-  rootRW.close();
-  root.close();
-  return write_ok; // no volume label was found
-
-}
-#endif
 
 
 typedef struct {
