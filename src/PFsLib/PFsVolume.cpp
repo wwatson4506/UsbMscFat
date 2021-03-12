@@ -354,8 +354,8 @@ uint32_t PFsVolume::freeClusterCount()  {
   gfcc.todo = m_fVol->clusterCount() + 2;
 
 //  digitalWriteFast(0, HIGH);
-  m_usmsci->readSectorsWithCB(m_fVol->fatStartSector(), gfcc.todo / gfcc.clusters_per_sector + 1, 
-      &_getfreeclustercountCB, (uint32_t)&gfcc);
+  if(m_usmsci->readSectorsWithCB(m_fVol->fatStartSector(), gfcc.todo / gfcc.clusters_per_sector + 1, 
+      &_getfreeclustercountCB, (uint32_t)&gfcc) != 0) gfcc.free = (uint32_t)-1;
 //  digitalWriteFast(0, LOW);
 
   return gfcc.free;

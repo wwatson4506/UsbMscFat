@@ -85,8 +85,10 @@ uint32_t GetFreeClusterCount(USBmscInterface *usmsci, PFsVolume &partVol)
   gfcc.todo = fatvol->clusterCount() + 2;
 
   digitalWriteFast(0, HIGH);
-  usmsci->readSectorsWithCB(fatvol->fatStartSector(), gfcc.todo / gfcc.clusters_per_sector + 1, 
-      &_getfreeclustercountCB, (uint32_t)&gfcc);
+
+
+  if (usmsci->readSectorsWithCB(fatvol->fatStartSector(), gfcc.todo / gfcc.clusters_per_sector + 1, 
+      &_getfreeclustercountCB, (uint32_t)&gfcc) != MS_CBW_PASS) gfcc.free = (uint32_t)-1;
   digitalWriteFast(0, LOW);
 
   return gfcc.free;
@@ -322,7 +324,7 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
       Serial.printf("    Free Clusters: Info: %u time us: %u\n", free_clusters_info, (uint32_t)em_sizes);
 
 
-      partVol[i].ls();
+      //partVol[i].ls();
     }
   }
  } 
@@ -400,7 +402,7 @@ void loop(void) {
       uint64_t total_size = (uint64_t)partVol.clusterCount() * (uint64_t)partVol.bytesPerCluster();
       Serial.printf(" Partition Total Size:%llu Used:%llu time us: %u\n", total_size, used_size, (uint32_t)em_sizes);
 
-      partVol.ls();
+      //partVol.ls();
     }
   }
 

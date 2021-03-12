@@ -52,6 +52,7 @@ class PFsFatFormatter {
   bool makeFat16();
   bool makeFat32();
   bool writeMbr();
+  void lbaToMbrChs(uint8_t* chs, uint32_t capacityMB, uint32_t lba);
   uint32_t m_capacityMB;
   uint32_t m_dataStart;
   uint32_t m_fatSize;
@@ -66,7 +67,6 @@ class PFsFatFormatter {
   uint8_t m_partType;
   uint8_t m_sectorsPerCluster;
   uint8_t m_part;
-  uint8_t begin_CHS[3];
-  uint8_t end_CHS[3];
+  char volName[32];
 };
 #endif  // FatFormatter_h
