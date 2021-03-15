@@ -208,6 +208,7 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
         dir->name[0] = FAT_NAME_DELETED;  // mark item as deleted
         dir->attributes = 0; 
         m_blockDev->writeSector(root_dir, buf);
+        m_blockDev->syncDevice();
       }
       return true;
     }
@@ -239,7 +240,8 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
       }
       dir->attributes = 8;  // mark as a volume label.
       m_blockDev->writeSector(root_dir, buf);
-      return true;
+      m_blockDev->syncDevice();
+          return true;
     }
 
   } else if (m_xVol) {
@@ -254,6 +256,7 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
 
     uint16_t index_in_sector=0;
     m_blockDev->readSector(root_dir, buf);
+    //m_xVol->cacheSafeRead(root_dir, buf);
     //dump_hexbytes(buf, 512);
     while (root_dir_size) {
       dir = reinterpret_cast<DirLabel_t*>(&buf[index_in_sector]);
@@ -267,6 +270,7 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
       if (index_in_sector >= 512 && root_dir_size) {
         root_dir++;
         m_blockDev->readSector(root_dir, buf);
+        //m_xVol->cacheSafeRead(root_dir, buf);
         index_in_sector = 0;
         //Serial.println("---");
         //dump_hexbytes(buf, 512);
@@ -278,6 +282,9 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
         Serial.printf("Found volume label - deleted\n");
         dir->type &= 0x7f;  // mark item as deleted
         m_blockDev->writeSector(root_dir, buf);
+        //m_xVol->cacheSafeWrite(root_dir, buf);
+        m_xVol->cacheClear();
+        m_blockDev->syncDevice();
       }
       return true;
     }
@@ -293,7 +300,10 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
         *puni = *volume_label++;
         puni += 2;
       }
+      //m_xVol->cacheSafeWrite(root_dir, buf);
       m_blockDev->writeSector(root_dir, buf);
+      m_xVol->cacheClear();
+      m_blockDev->syncDevice();
       return true;
     }
   }
