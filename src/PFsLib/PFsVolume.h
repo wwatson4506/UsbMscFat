@@ -123,6 +123,20 @@ class PFsVolume {
     return m_fVol ? m_fVol->fatType() :
            m_xVol ? m_xVol->fatType() : 0;
   }
+  /** \return the cluster heap start sector. */
+  uint32_t clusterHeapStartSector() const {	  
+	return m_xVol ? m_xVol->clusterHeapStartSector() : 0;
+   }
+  /** \return the FAT length in sectors */
+  uint32_t fatLength() const {
+	  return m_xVol ? m_xVol->fatLength() : 0;
+   }
+   /** \return the power of two for sectors per cluster. */
+   uint8_t  sectorsPerClusterShift() const {
+	   return m_xVol ? m_xVol->sectorsPerClusterShift() : 0;;
+   }
+  
+  
   /** \return the free cluster count. */
   uint32_t freeClusterCount();
 

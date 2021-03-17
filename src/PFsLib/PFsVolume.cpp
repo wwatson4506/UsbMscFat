@@ -27,12 +27,12 @@ PFsVolume* PFsVolume::m_cwv = nullptr;
 //------------------------------------------------------------------------------
 bool PFsVolume::begin(USBMSCDevice* dev, bool setCwv, uint8_t part) {
   m_usmsci = dev;
-  //Serial.printf("PFsVolume::begin USBmscInterface(%x, %u)\n", (uint32_t)dev, part);  
+  Serial.printf("PFsVolume::begin USBmscInterface(%x, %u)\n", (uint32_t)dev, part);  
   return begin((BlockDevice*)dev, setCwv, part);
 }
 
 bool PFsVolume::begin(BlockDevice* blockDev, bool setCwv, uint8_t part) {
-  //Serial.printf("PFsVolume::begin(%x, %u)\n", (uint32_t)blockDev, part);
+  Serial.printf("PFsVolume::begin(%x, %u)\n", (uint32_t)blockDev, part);
   m_blockDev = blockDev;
   m_part = part;
   m_fVol = nullptr;
@@ -322,6 +322,7 @@ typedef struct {
 static void _getfreeclustercountCB(uint32_t token, uint8_t *buffer) 
 {
   //digitalWriteFast(1, HIGH);
+//  Serial.print("&");
   _gfcc_t *gfcc = (_gfcc_t *)token;
   uint16_t cnt = gfcc->clusters_per_sector;
   if (cnt > gfcc->todo) cnt = gfcc->todo;
@@ -346,6 +347,7 @@ static void _getfreeclustercountCB(uint32_t token, uint8_t *buffer)
 //-------------------------------------------------------------------------------------------------
 uint32_t PFsVolume::freeClusterCount()  {
   // For XVolume lets let the original code do it.
+//  Serial.println("PFsVolume::freeClusterCount() called");
   if (m_xVol) return m_xVol->freeClusterCount();
 
   if (!m_fVol) return 0;
@@ -364,10 +366,12 @@ uint32_t PFsVolume::freeClusterCount()  {
   gfcc.todo = m_fVol->clusterCount() + 2;
 
 //  digitalWriteFast(0, HIGH);
-  if(m_usmsci->readSectorsWithCB(m_fVol->fatStartSector(), gfcc.todo / gfcc.clusters_per_sector + 1, 
-      &_getfreeclustercountCB, (uint32_t)&gfcc) != 0) gfcc.free = (uint32_t)-1;
+//  Serial.println("    Using readSectorswithCB");
+  bool succeeded = m_usmsci->readSectorsWithCB(m_fVol->fatStartSector(), gfcc.todo / gfcc.clusters_per_sector + 1, 
+      &_getfreeclustercountCB, (uint32_t)&gfcc);
 //  digitalWriteFast(0, LOW);
-
+//  Serial.printf("    status: %u free cluster: %x\n", succeeded, gfcc.free);
+  if(!succeeded) gfcc.free = (uint32_t)-1;
   return gfcc.free;
 }
 

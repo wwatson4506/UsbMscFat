@@ -168,13 +168,19 @@ public:
 		_cached_usedSize_valid = false;
 		return mscfs.rmdir(filepath);
 	}
-	uint64_t usedSize() {
+	uint64_t usedSize() {	
+		#if 1
+		return  (uint64_t)(mscfs.clusterCount() - mscfs.freeClusterCount())
+		  		* (uint64_t)mscfs.bytesPerCluster();
+		#else
+		Serial.printf("$$$mscFS::usedSize %u %llu\n", _cached_usedSize_valid, _cached_usedSize);
 		if (!_cached_usedSize_valid) {
 			_cached_usedSize_valid = true;
 			_cached_usedSize =  (uint64_t)(mscfs.clusterCount() - mscfs.freeClusterCount())
 		  		* (uint64_t)mscfs.bytesPerCluster();
 	  	}
 		return _cached_usedSize;
+		#endif
 	}
 	uint64_t totalSize() {
 		return (uint64_t)mscfs.clusterCount() * (uint64_t)mscfs.bytesPerCluster();
