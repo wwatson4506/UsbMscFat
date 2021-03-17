@@ -164,9 +164,9 @@ bool PFsFatFormatter::makeFat16() {
   //if (nc < 4085 || nc >= 65525) {
   //  writeMsg("Bad cluster count\r\n");
   //  return false;
-  //}
   m_reservedSectorCount = 1;
   m_fatStart = m_relativeSectors + m_reservedSectorCount;
+  //}
   //m_totalSectors = nc*m_sectorsPerCluster
   //                 + 2*m_fatSize + m_reservedSectorCount + 32;
   if (m_totalSectors < 65536) {
@@ -288,15 +288,13 @@ bool PFsFatFormatter::makeFat32() {
     return false;
   }
   return initFatDir(32, 2*m_fatSize + m_sectorsPerCluster);
-
-  return 1;
 }
 
 //------------------------------------------------------------------------------
 bool PFsFatFormatter::writeMbr() {
   memset(m_secBuf, 0, BYTES_PER_SECTOR);
   MbrSector_t* mbr = reinterpret_cast<MbrSector_t*>(m_secBuf);
-    MbrPart_t *pt = &mbr->part[m_part];
+  MbrPart_t *pt = &mbr->part[m_part];
 
 if (!m_dev->readSector(0, m_secBuf)) Serial.println("DIDN't GOT SECTOR BUFFER");
 

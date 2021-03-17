@@ -31,4 +31,5 @@
 #include "PFsVolume.h"
 #include "PFsFile.h"
 #include "PFsFatFormatter.h"
+#include "PFsExFatFormatter.h"
 #endif  // PFsLib_h
