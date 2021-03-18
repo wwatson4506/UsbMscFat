@@ -74,10 +74,11 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr) {
   m_totalSectors = m_sectorCount;
   m_partType = pt->type;
   
+  bool has_volume_label = partVol.getVolumeLabel(volName, sizeof(volName));
 #if defined(DBG_Print)
   Serial.println(m_part);
 
-  if (partVol.getVolumeLabel(volName, sizeof(volName))) {
+  if (has_volume_label) {
 	Serial.printf("Volume name:(%s)", volName);
   }
   Serial.println("\nPFsFatFormatter::format................");
@@ -129,7 +130,7 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr) {
     writeMsg("Format Failed\r\n");
   }
   
-  partVol.setVolumeLabel(volName);
+  if (has_volume_label) partVol.setVolumeLabel(volName);
   
   
   return rtn;
