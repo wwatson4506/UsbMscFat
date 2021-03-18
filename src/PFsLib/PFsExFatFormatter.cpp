@@ -47,7 +47,7 @@ const uint32_t ROOT_CLUSTER = 4;
 #endif  // PRINT_FORMAT_PROGRESS
 //------------------------------------------------------------------------------
 
-bool PFsExFatFormatter::format(BlockDeviceInterface *dev, uint8_t part, PFsVolume &partVol, uint8_t* secBuf, print_t* pr) {
+bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr) {
 #if !PRINT_FORMAT_PROGRESS
 (void)pr;
 #endif  //  !PRINT_FORMAT_PROGRESS
@@ -61,17 +61,17 @@ bool PFsExFatFormatter::format(BlockDeviceInterface *dev, uint8_t part, PFsVolum
 
   m_secBuf = secBuf;
   m_pr = pr;
-  m_dev = dev;
-  m_part = part;
+  m_dev = partVol.blockDevice();
+  m_part = partVol.part()-1;  // convert to 0 biased. 
   
-  Serial.println(part);
+  Serial.println(m_part);
   
   if (!m_dev->readSector(0, (uint8_t*)&mbr)) {
     Serial.print("\nread MBR failed.\n");
     //errorPrint();
     return false;
   }
-  MbrPart_t *pt = &mbr.part[part];
+  MbrPart_t *pt = &mbr.part[m_part];
   
   
 
@@ -200,8 +200,8 @@ bool PFsExFatFormatter::format(BlockDeviceInterface *dev, uint8_t part, PFsVolum
   }
   
   sector = partitionOffset;
-  if (!dev->writeSector(sector, secBuf)  ||
-      !dev->writeSector(sector + BOOT_BACKUP_OFFSET , secBuf)) {
+  if (!m_dev->writeSector(sector, secBuf)  ||
+      !m_dev->writeSector(sector + BOOT_BACKUP_OFFSET , secBuf)) {
     DBG_FAIL_MACRO;
     goto fail;
   }
@@ -214,8 +214,8 @@ bool PFsExFatFormatter::format(BlockDeviceInterface *dev, uint8_t part, PFsVolum
     for (size_t i = 0; i < BYTES_PER_SECTOR; i++) {
       checksum = exFatChecksum(checksum, secBuf[i]);
     }
-    if (!dev->writeSector(sector, secBuf)  ||
-        !dev->writeSector(sector + BOOT_BACKUP_OFFSET , secBuf)) {
+    if (!m_dev->writeSector(sector, secBuf)  ||
+        !m_dev->writeSector(sector + BOOT_BACKUP_OFFSET , secBuf)) {
       DBG_FAIL_MACRO;
       goto fail;
     }
@@ -229,8 +229,8 @@ bool PFsExFatFormatter::format(BlockDeviceInterface *dev, uint8_t part, PFsVolum
     for (size_t i = 0; i < BYTES_PER_SECTOR; i++) {
       checksum = exFatChecksum(checksum, secBuf[i]);
     }
-    if (!dev->writeSector(sector, secBuf)  ||
-        !dev->writeSector(sector + BOOT_BACKUP_OFFSET , secBuf)) {
+    if (!m_dev->writeSector(sector, secBuf)  ||
+        !m_dev->writeSector(sector + BOOT_BACKUP_OFFSET , secBuf)) {
       DBG_FAIL_MACRO;
       goto fail;
     }
@@ -242,8 +242,8 @@ bool PFsExFatFormatter::format(BlockDeviceInterface *dev, uint8_t part, PFsVolum
   for (size_t i = 0; i < BYTES_PER_SECTOR; i += 4) {
     setLe32(secBuf + i, checksum);
   }
-  if (!dev->writeSector(sector, secBuf)  ||
-      !dev->writeSector(sector + BOOT_BACKUP_OFFSET , secBuf)) {
+  if (!m_dev->writeSector(sector, secBuf)  ||
+      !m_dev->writeSector(sector + BOOT_BACKUP_OFFSET , secBuf)) {
     DBG_FAIL_MACRO;
     goto fail;
   }
@@ -263,7 +263,7 @@ bool PFsExFatFormatter::format(BlockDeviceInterface *dev, uint8_t part, PFsVolum
     if (i%(ns/32) == 0) {
       writeMsg(pr, ".");
     }
-    if (!dev->writeSector(sector + i, secBuf)) {
+    if (!m_dev->writeSector(sector + i, secBuf)) {
       DBG_FAIL_MACRO;
       goto fail;
     }
@@ -285,7 +285,7 @@ bool PFsExFatFormatter::format(BlockDeviceInterface *dev, uint8_t part, PFsVolum
   // Allocate clusters for bitmap, upcase, and root.
   secBuf[0] = 0X7;
   for (uint32_t i = 0; i < ns; i++) {
-    if (!dev->writeSector(sector + i, secBuf)) {
+    if (!m_dev->writeSector(sector + i, secBuf)) {
       DBG_FAIL_MACRO;
       goto fail;
     }
@@ -332,7 +332,7 @@ bool PFsExFatFormatter::format(BlockDeviceInterface *dev, uint8_t part, PFsVolum
 
   // Write root, cluster four.
   for (uint32_t i = 0; i < ns; i++) {
-    if (!dev->writeSector(sector + i, secBuf)) {
+    if (!m_dev->writeSector(sector + i, secBuf)) {
       DBG_FAIL_MACRO;
       goto fail;
     }

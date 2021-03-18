@@ -44,7 +44,7 @@ class PFsFatFormatter {
    *
    * \return true for success or false for failure.
    */
-  bool format(BlockDeviceInterface *blockDev, uint8_t part, PFsVolume &partVol, uint8_t* secBuf, print_t* pr);
+  bool format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr);
 
  private:
   bool initFatDir(uint8_t fatType, uint32_t sectorCount);

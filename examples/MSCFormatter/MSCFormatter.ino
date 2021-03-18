@@ -1,5 +1,9 @@
 #include "Arduino.h"
 #include "mscFS.h"
+#include "sdios.h"
+
+// Serial output stream
+ArduinoOutStream cout(Serial);
 
 // Setup USBHost_t36 and as many HUB ports as needed.
 USBHost myusb;
@@ -17,17 +21,71 @@ msController msDrive1(myusb);
 #define SD_DRIVE 1
 #define MS_DRIVE 2
 
-#define SD_CONFIG SdioConfig(FIFO_SDIO)
-
 // set up variables using the mscFS utility library functions:
 UsbFs msc1;
 UsbFs msc2;
 
 SdFs sd;
 PFsFatFormatter FatFormatter;
+PFsExFatFormatter ExFatFormatter;
 uint8_t  sectorBuffer[512];
+  uint8_t volName[32];
+
+typedef struct {
+  uint32_t free;
+  uint32_t todo;
+  uint32_t clusters_per_sector;
+} _gfcc_t;
 
 
+void _getfreeclustercountCB(uint32_t token, uint8_t *buffer) 
+{
+  digitalWriteFast(1, HIGH);
+  _gfcc_t *gfcc = (_gfcc_t *)token;
+  uint16_t cnt = gfcc->clusters_per_sector;
+  if (cnt > gfcc->todo) cnt = gfcc->todo;
+  gfcc->todo -= cnt; // update count here...
+
+  if (gfcc->clusters_per_sector == 512/2) {
+    // fat16
+    uint16_t *fat16 = (uint16_t *)buffer;
+    while (cnt-- ) {
+      if (*fat16++ == 0) gfcc->free++;
+    }
+  } else {
+    uint32_t *fat32 = (uint32_t *)buffer;
+    while (cnt-- ) {
+      if (*fat32++ == 0) gfcc->free++;
+    }
+  }
+
+  digitalWriteFast(1, LOW);
+}
+
+//-------------------------------------------------------------------------------------------------
+uint32_t GetFreeClusterCount(USBmscInterface *usmsci, PFsVolume &partVol)
+{
+
+  FatVolume* fatvol =  partVol.getFatVol();
+  if (!fatvol) return 0;
+
+  _gfcc_t gfcc; 
+  gfcc.free = 0;
+
+  switch (partVol.fatType()) {
+    default: return 0;
+    case FAT_TYPE_FAT16: gfcc.clusters_per_sector = 512/2; break;
+    case FAT_TYPE_FAT32: gfcc.clusters_per_sector = 512/4; break;
+  }
+  gfcc.todo = fatvol->clusterCount() + 2;
+
+  digitalWriteFast(0, HIGH);
+  usmsci->readSectorsWithCB(fatvol->fatStartSector(), gfcc.todo / gfcc.clusters_per_sector + 1, 
+      &_getfreeclustercountCB, (uint32_t)&gfcc);
+  digitalWriteFast(0, LOW);
+
+  return gfcc.free;
+}
 bool getPartitionVolumeLabel(PFsVolume &partVol, uint8_t *pszVolName, uint16_t cb) {
   uint8_t buf[512];
   if (!pszVolName || (cb < 12)) return false; // don't want to deal with it
@@ -67,6 +125,7 @@ bool getPartitionVolumeLabel(PFsVolume &partVol, uint8_t *pszVolName, uint16_t c
       }
       break;
   }
+
   return true;
 }
 
@@ -124,6 +183,28 @@ bool mbrDmp(BlockDeviceInterface *blockDev) {
   }
   return true;
 }
+//----------------------------------------------------------------
+
+void dump_hexbytes(const void *ptr, int len)
+{
+  if (ptr == NULL || len <= 0) return;
+  const uint8_t *p = (const uint8_t *)ptr;
+  while (len) {
+    for (uint8_t i = 0; i < 32; i++) {
+      if (i > len) break;
+      Serial.printf("%02X ", p[i]);
+    }
+    Serial.print(":");
+    for (uint8_t i = 0; i < 32; i++) {
+      if (i > len) break;
+      Serial.printf("%c", ((p[i] >= ' ') && (p[i] <= '~')) ? p[i] : '.');
+    }
+    Serial.println();
+    p += 32;
+    len -= 32;
+  }
+}
+
 
 //----------------------------------------------------------------
 
@@ -131,6 +212,7 @@ bool mbrDmp(BlockDeviceInterface *blockDev) {
 void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
 {
   Serial.printf("Initialize USB drive...");
+  //cmsReport = 0;
   if (!msc.begin(&msDrive)) {
     Serial.println("");
     msc.errorPrint(&Serial);
@@ -138,6 +220,7 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
   } else {
     Serial.printf("USB drive %u is present.\n", drive_number);
   }
+  //cmsReport = -1;
 
   //  mbrDmp( &msc );
   mbrDmp( msc.usbDrive() );
@@ -145,10 +228,10 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
   #if 1
   bool partition_valid[4];
   PFsVolume partVol[4];
-  uint8_t volName[32];
+  char volName[32];
 
   for (uint8_t i = 0; i < 4; i++) {
-    partition_valid[i] = partVol[i].begin(msc.usbDrive(), true, i+1);
+    partition_valid[i] = partVol[i].begin((USBMSCDevice*)msc.usbDrive(), true, i+1);
     Serial.printf("Partition %u valid:%u\n", i, partition_valid[i]);
   }
   for (uint8_t i = 0; i < 4; i++) {
@@ -160,7 +243,7 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
         case FAT_TYPE_FAT32: Serial.printf("%d:>> Fat32: ", i); break;
         case FAT_TYPE_EXFAT: Serial.printf("%d:>> ExFat: ", i); break;
       }
-      if (getPartitionVolumeLabel(partVol[i], volName, sizeof(volName))) {
+      if (partVol[i].getVolumeLabel(volName, sizeof(volName))) {
         Serial.printf("Volume name:(%s)", volName);
       }
       elapsedMicros em_sizes = 0;
@@ -170,9 +253,19 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
       uint64_t total_size = (uint64_t)partVol[i].clusterCount() * (uint64_t)partVol[i].bytesPerCluster();
       Serial.printf(" Partition Total Size:%llu Used:%llu time us: %u\n", total_size, used_size, (uint32_t)em_sizes);
 
+      em_sizes = 0; // lets see how long this one takes. 
+      uint32_t free_clusters_fast = GetFreeClusterCount(msc.usbDrive(), partVol[i]);
+      Serial.printf("    Free Clusters: API: %u by CB:%u time us: %u\n", free_cluster_count, free_clusters_fast, (uint32_t)em_sizes);
+      
+      em_sizes = 0; // lets see how long this one takes. 
+      uint32_t free_clusters_info = partVol[i].getFSInfoSectorFreeClusterCount();
+      Serial.printf("    Free Clusters: Info: %u time us: %u\n", free_clusters_info, (uint32_t)em_sizes);
+
+
       partVol[i].ls();
     }
   }
+
   #else
   for (uint8_t i = 1; i < 5; i++) {
     PFsVolume partVol;
@@ -199,7 +292,7 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
     partVol.ls();
   }
   #endif
-}  
+}
 
 //----------------------------------------------------------------
 
@@ -218,16 +311,22 @@ void formatter(uint8_t drive_number, msController &msDrive, UsbFs &msc, uint8_t 
   //mbrDmp( msc.usbDrive() );
 
   PFsVolume partVol;
-  uint8_t volName[32];
+  //uint8_t volName[32];
   bool partition_valid;
 
     partition_valid = partVol.begin(msc.usbDrive(), true, part+1);
     Serial.printf("Partition %u valid:%u\n", part, partition_valid);
-
-  if(partition_valid)
-  FatFormatter.format(msc.usbDrive(), part, partVol, sectorBuffer, &Serial);
+  
+  if(partition_valid && partVol.fatType() != FAT_TYPE_FAT12){
+    if(partVol.fatType() != FAT_TYPE_EXFAT) {
+      FatFormatter.format(partVol, sectorBuffer, &Serial);
+    } else {
+      Serial.println("ExFatFormatter - WIP");
+      ExFatFormatter.format(partVol, sectorBuffer, &Serial);
+    }
+  }
   else
-  Serial.println("Cannot format an invalid partition");
+    Serial.println("Cannot format an invalid partition");
   
 }
 //----------------------------------------------------------------
@@ -248,6 +347,13 @@ pinMode(2, OUTPUT);
 
   // Start USBHost_t36, HUB(s) and USB devices.
   myusb.begin();
+
+ cout << F(
+         "\n"
+         "Cards up to 2 GiB (GiB = 2^30 bytes) will be formated FAT16.\n"
+         "Cards larger than 2 GiB and up to 32 GiB will be formatted\n"
+         "FAT32. Cards larger than 32 GiB will be formatted exFAT.\n"
+         "\n");
 
 }
 
@@ -282,7 +388,7 @@ void loop() {
       break;
     case('2'):
       //drive 1, , , partition 0-3
-      //formatter(1, msDrive1, msc1, 2);
+      formatter(1, msDrive1, msc1, 2);
       break;
     case('3'):
       //drive 1, , , partition 0-3

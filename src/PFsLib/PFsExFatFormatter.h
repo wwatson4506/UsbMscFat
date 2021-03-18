@@ -45,7 +45,7 @@ class PFsExFatFormatter {
    *
    * \return true for success or false for failure.
    */
-  bool format(BlockDeviceInterface *dev, uint8_t part, PFsVolume &partVol, uint8_t* secBuf, print_t* pr);
+  bool format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr);
 
  private:
    bool writeMbr();
