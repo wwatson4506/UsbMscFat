@@ -27,12 +27,14 @@ PFsVolume* PFsVolume::m_cwv = nullptr;
 //------------------------------------------------------------------------------
 bool PFsVolume::begin(USBMSCDevice* dev, bool setCwv, uint8_t part) {
   m_usmsci = dev;
+  m_blockDev = dev;  
   Serial.printf("PFsVolume::begin USBmscInterface(%x, %u)\n", (uint32_t)dev, part);  
   return begin((BlockDevice*)dev, setCwv, part);
 }
 
 bool PFsVolume::begin(BlockDevice* blockDev, bool setCwv, uint8_t part) {
   Serial.printf("PFsVolume::begin(%x, %u)\n", (uint32_t)blockDev, part);
+  if ((m_blockDev != blockDev) && (m_blockDev != nullptr)) m_usmsci = nullptr; // 
   m_blockDev = blockDev;
   m_part = part;
   m_fVol = nullptr;
@@ -314,6 +316,7 @@ bool PFsVolume::setVolumeLabel(char *volume_label)
 
 typedef struct {
   uint32_t free;
+  //uint32_t not_free;
   uint32_t todo;
   uint32_t clusters_per_sector;
 } _gfcc_t;
@@ -338,6 +341,7 @@ static void _getfreeclustercountCB(uint32_t token, uint8_t *buffer)
     uint32_t *fat32 = (uint32_t *)buffer;
     while (cnt-- ) {
       if (*fat32++ == 0) gfcc->free++;
+      //else gfcc->not_free++;
     }
   }
 
@@ -357,6 +361,7 @@ uint32_t PFsVolume::freeClusterCount()  {
   // So roll our own here for Fat16/32...
   _gfcc_t gfcc; 
   gfcc.free = 0;
+  //gfcc.not_free = 0;
 
   switch (m_fVol->fatType()) {
     default: return 0;
@@ -364,13 +369,27 @@ uint32_t PFsVolume::freeClusterCount()  {
     case FAT_TYPE_FAT32: gfcc.clusters_per_sector = 512/4; break;
   }
   gfcc.todo = m_fVol->clusterCount() + 2;
+#if 0    
+    Serial.printf("###PFsVolume::freeClusterCount: FT:%u\n", m_fVol->fatType());
+    Serial.printf("    m_sectorsPerCluster:%u\n", m_fVol->sectorsPerCluster());
+    //Serial.printf("    m_clusterSectorMask:%u\n", m_fVol->clusterSectorMask());
+    Serial.printf("    m_sectorsPerClusterShift:%u\n", m_fVol->sectorsPerClusterShift());
+    Serial.printf("    m_rootDirEntryCount:%u\n", m_fVol->rootDirEntryCount());
+    //Serial.printf("    m_allocSearchStart:%u\n", m_fVol->allocSearchStart());
+    Serial.printf("    m_sectorsPerFat:%u\n", m_fVol->sectorsPerFat());
+    Serial.printf("    m_dataStartSector:%u\n", m_fVol->dataStartSector());
+    Serial.printf("    m_fatStartSector:%u\n", m_fVol->fatStartSector());
+    //Serial.printf("    m_lastCluster:%u\n", m_fVol->lastCluster());
+    Serial.printf("    m_rootDirStart:%u\n", m_fVol->rootDirStart());
+    Serial.printf("    m_bytesPerSector:%u\n", m_fVol->bytesPerSector());
+#endif
 
 //  digitalWriteFast(0, HIGH);
 //  Serial.println("    Using readSectorswithCB");
   bool succeeded = m_usmsci->readSectorsWithCB(m_fVol->fatStartSector(), gfcc.todo / gfcc.clusters_per_sector + 1, 
       &_getfreeclustercountCB, (uint32_t)&gfcc);
 //  digitalWriteFast(0, LOW);
-//  Serial.printf("    status: %u free cluster: %x\n", succeeded, gfcc.free);
+  //Serial.printf("    status: %u free cluster: %x not free:%x\n", succeeded, gfcc.free, gfcc.not_free);
   if(!succeeded) gfcc.free = (uint32_t)-1;
   return gfcc.free;
 }

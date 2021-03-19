@@ -314,7 +314,7 @@ void formatter(uint8_t drive_number, msController &msDrive, UsbFs &msc, uint8_t 
   //uint8_t volName[32];
   bool partition_valid;
 
-    partition_valid = partVol.begin(msc.usbDrive(), true, part+1);
+    partition_valid = partVol.begin((USBMSCDevice*)msc.usbDrive(), true, part+1);
     Serial.printf("Partition %u valid:%u\n", part, partition_valid);
   
   if(partition_valid && partVol.fatType() != FAT_TYPE_FAT12){
