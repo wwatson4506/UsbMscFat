@@ -73,7 +73,8 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr) {
   m_relativeSectors = getLe32(pt->relativeSectors);
   m_totalSectors = m_sectorCount;
   m_partType = pt->type;
-  
+  	m_fatSize = partVol.getFatVol()->sectorsPerFat();
+
   bool has_volume_label = partVol.getVolumeLabel(volName, sizeof(volName));
 #if defined(DBG_Print)
   Serial.println(m_part);
@@ -88,6 +89,7 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr) {
   Serial.printf("    m_dataStart:%u\n", m_dataStart);
   Serial.printf("    m_sectorsPerCluster:%u\n", m_sectorsPerCluster);
   Serial.printf("    m_relativeSectors:%u\n", m_relativeSectors);
+  Serial.printf("    m_sectorsPerFat: %u\n", m_fatSize);
   Serial.println();
 #endif	
 	
@@ -113,6 +115,12 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr) {
   }
     
   rtn = m_sectorCount < 0X400000 ? makeFat16() :makeFat32();
+  
+  Serial.printf("free clusters after format: %u\n", partVol.freeClusterCount());
+  
+  // what happens if I tell the partion to begin again?
+  partVol.begin(m_dev, true, m_part+1);  // need to 1 bias again...
+  Serial.printf("free clusters after begin on partVol: %u\n", partVol.freeClusterCount());
   
   //if(partVol.fatType() == 16) {
 //	writeMsg("format makeFAT16\r\n");  
@@ -157,7 +165,8 @@ bool PFsFatFormatter::makeFat16() {
   //}
 
   nc = (m_sectorCount - m_dataStart)/m_sectorsPerCluster;
-  m_fatSize = (nc + 2 + (BYTES_PER_SECTOR/2) - 1)/(BYTES_PER_SECTOR/2);
+  //m_fatSize = (nc + 2 + (BYTES_PER_SECTOR/2) - 1)/(BYTES_PER_SECTOR/2);
+  
 #if defined(DBG_Print)
   Serial.printf("m_relativeSectors: %d, m_fatSize: %d, m_dataStart: %d\n",m_relativeSectors, m_fatSize, m_dataStart) ;
 #endif
@@ -229,7 +238,8 @@ bool PFsFatFormatter::makeFat32() {
   //}
 
     nc = (m_sectorCount - m_dataStart)/m_sectorsPerCluster;
-    m_fatSize = (nc + 2 + (BYTES_PER_SECTOR/4) - 1)/(BYTES_PER_SECTOR/4);
+    //m_fatSize = (nc + 2 + (BYTES_PER_SECTOR/4) - 1)/(BYTES_PER_SECTOR/4);
+
     #if defined(DBG_Print)
       Serial.printf("    m_sectorCount: %d\n", m_sectorCount);
       Serial.printf("    m_dataStart: %d\n", m_dataStart);
