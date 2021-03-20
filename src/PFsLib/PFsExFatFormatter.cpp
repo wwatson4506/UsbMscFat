@@ -26,7 +26,7 @@
 //#include "../common/DebugMacros.h"
 #include "PFsExFatFormatter.h"
 
-#define DBG_PRINT 1
+//#define DBG_PRINT 1
 
 //------------------------------------------------------------------------------
 // Formatter assumes 512 byte sectors.
@@ -53,6 +53,8 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
 #if !PRINT_FORMAT_PROGRESS
 (void)pr;
 #endif  //  !PRINT_FORMAT_PROGRESS
+  checksum = 0;
+
   MbrSector_t mbr;
   ExFatPbs_t* pbs;
   DirUpcase_t* dup;
@@ -65,9 +67,7 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   m_pr = pr;
   m_dev = partVol.blockDevice();
   m_part = partVol.part()-1;  // convert to 0 biased. 
-  
-  Serial.println(m_part);
-  
+    
   if (!m_dev->readSector(0, (uint8_t*)&mbr)) {
     Serial.print("\nread MBR failed.\n");
     //errorPrint();
@@ -77,6 +77,7 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   
   sectorCount = getLe32(pt->totalSectors);
   
+  bool has_volume_label = partVol.getVolumeLabel(volName, sizeof(volName));
   #if defined(DBG_PRINT)
 	Serial.printf("    m_sectorsPerCluster:%u\n", partVol.sectorsPerCluster());
 	Serial.printf("    m_sectorsPerClusterShift:%u\n", partVol.getExFatVol()->sectorsPerClusterShift());
@@ -88,7 +89,7 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
 	Serial.printf("    m_clusterCount: %u\n", partVol.clusterCount());
 	Serial.printf("    m_totalSectors: %u\n", sectorCount);
 	Serial.printf("    m_bytesPerSector: %u\n", partVol.getExFatVol()->bytesPerSector());
-	Serial.printf("    m_bytesPerCluster: %u\n", partVol.getExFatVol()->bytesPerSector());
+	Serial.printf("    m_bytesPerCluster: %u\n", partVol.getExFatVol()->bytesPerCluster());
 	Serial.printf("    m_rootDirectoryCluster: %u\n", partVol.getExFatVol()->rootDirectoryCluster());
 	Serial.printf("    m_bytesPerSectorShift: %u\n", partVol.getExFatVol()->bytesPerSectorShift());
 	Serial.println();
@@ -102,8 +103,8 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   
   
   
-  BYTES_PER_SECTOR = partVol.getExFatVol()->bytesPerSector();
-  SECTOR_MASK = BYTES_PER_SECTOR - 1;
+  //BYTES_PER_SECTOR = partVol.getExFatVol()->bytesPerSector();
+  //SECTOR_MASK = BYTES_PER_SECTOR - 1;
   ROOT_CLUSTER = partVol.getExFatVol()->rootDirectoryCluster();
   
   // Determine partition layout.  
@@ -193,6 +194,7 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   setLe32(pbs->bpb.clusterCount, clusterCount);
   setLe32(pbs->bpb.rootDirectoryCluster, ROOT_CLUSTER);
   setLe32(pbs->bpb.volumeSerialNumber, sectorCount);
+    
   setLe16(pbs->bpb.fileSystemRevision, 0X100);
   setLe16(pbs->bpb.volumeFlags, 0);
   pbs->bpb.bytesPerSectorShift = BYTES_PER_SECTOR_SHIFT;
@@ -216,8 +218,9 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   }
   
   sector = partitionOffset;
+#if defined(DBG_PRINT)
   Serial.printf("\tWriting Sector: %d\n", sector-partitionOffset);
-
+#endif
   if (!m_dev->writeSector(sector, secBuf)  ||
       !m_dev->writeSector(sector + BOOT_BACKUP_OFFSET , secBuf)) {
     DBG_FAIL_MACRO;
@@ -227,9 +230,9 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   
   writeMsg(pr, "Write eight Extended Boot Sectors\n");
   sector++;
-  
+#if defined(DBG_PRINT)
   Serial.printf("\tWriting Sector: %d\n", sector-partitionOffset);
-  
+#endif
   // Write eight Extended Boot Sectors.
   memset(secBuf, 0, BYTES_PER_SECTOR);
   setLe16(pbs->signature, PBR_SIGNATURE);
@@ -246,8 +249,9 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   }
   
   writeMsg(pr, "Write OEM Parameter Sector and reserved sector\n");
+#if defined(DBG_PRINT)
   Serial.printf("\tWriting Sector: %d\n", sector-partitionOffset);
-
+#endif
   // Write OEM Parameter Sector and reserved sector.
   memset(secBuf, 0, BYTES_PER_SECTOR);
   for (int j = 0; j < 2; j++) {
@@ -263,8 +267,9 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   }
   
   writeMsg(pr, "Write Boot CheckSum Sector\n");
+#if defined(DBG_PRINT)
   Serial.printf("\tWriting Sector: %d\n", sector-partitionOffset);
-
+#endif
   // Write Boot CheckSum Sector.
   for (size_t i = 0; i < BYTES_PER_SECTOR; i += 4) {
     setLe32(secBuf + i, checksum);
@@ -289,9 +294,9 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   //      The FatEntry[1] field only exists due to historical precedence and does not describe anything of interest.
   //The )*4 is because entries are four bytes. The expression rounds up to a whole number of sectors.
   ns = ((clusterCount + 2)*4 + BYTES_PER_SECTOR - 1)/BYTES_PER_SECTOR;
-  
+#if defined(DBG_PRINT)
   Serial.printf("\tWriting Sector: %d, ns: %u\n", sector-partitionOffset, ns);
-  
+#endif
   memset(secBuf, 0, BYTES_PER_SECTOR);
   // Allocate two reserved clusters, bitmap, upcase, and root clusters.
   secBuf[0] = 0XF8;
@@ -320,10 +325,10 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   // The 7)/8 converts clusterCount to bytes rounded up to whole bytes.
   bitmapSize = (clusterCount + 7)/8;  
   ns = (bitmapSize + BYTES_PER_SECTOR - 1)/BYTES_PER_SECTOR;
-  
+#if defined(DBG_PRINT)
   Serial.printf("\tWriting Sector: %d\n", sector-partitionOffset);
-  Serial.printf("(Original) bitmapSize: %d, ns: %d\n", bitmapSize, ns);
-
+  Serial.printf("bitmapSize: %d, ns: %d\n", bitmapSize, ns);
+#endif
   if (ns > sectorsPerCluster) {
     DBG_FAIL_MACRO;
     goto fail;
@@ -344,8 +349,9 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
  
   // Write cluster three, upcase table.
   writeMsg(pr, "Writing upcase table\r\n");
+#if defined(DBG_PRINT)
   Serial.printf("\tWriting Sector: %d\n", clusterHeapOffset + sectorsPerCluster);
-
+#endif
   if (!writeUpcase(partitionOffset + clusterHeapOffset + sectorsPerCluster)) {
     DBG_FAIL_MACRO;
     goto fail;
@@ -359,8 +365,9 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   writeMsg(pr, "Writing root\r\n");
   ns = sectorsPerCluster;
   sector = partitionOffset + clusterHeapOffset + 2*sectorsPerCluster;
-  Serial.printf("\tWriting Sector: %d\n", sector-partitionOffset);
-
+#if defined(DBG_PRINT)
+  Serial.printf("\tWriting 1st Sector of root: %d\n", clusterHeapOffset + 2*sectorsPerCluster);
+#endif
   memset(secBuf, 0, BYTES_PER_SECTOR);
 
   // Unused Label entry.
@@ -381,8 +388,6 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   setLe64(dup->size, m_upcaseSize);
 
   // Write root, cluster four.
-  Serial.printf("\tWriting Sector: %d\n", sector-partitionOffset);
-
   for (uint32_t i = 0; i < ns; i++) {
     if (!m_dev->writeSector(sector + i, secBuf)) {
       DBG_FAIL_MACRO;
@@ -393,6 +398,8 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
     }
   }
   writeMsg(pr, "Format done\r\n");
+  m_dev->syncDevice();
+  if (has_volume_label) partVol.setVolumeLabel(volName);
   return true;
 
  fail:

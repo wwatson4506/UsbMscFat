@@ -76,7 +76,7 @@ class PFsExFatFormatter {
   uint8_t sectorsPerClusterShift;
   uint32_t m_relativeSectors;
   uint8_t m_part;
-  
+  char volName[32];
   
 };
 #endif  // ExFatFormatter_h
