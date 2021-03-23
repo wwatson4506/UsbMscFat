@@ -31,13 +31,13 @@
 //------------------------------------------------------------------------------
 // Formatter assumes 512 byte sectors.
 const uint32_t BOOT_BACKUP_OFFSET = 12;
-uint16_t BYTES_PER_SECTOR = 512;
-uint16_t SECTOR_MASK = BYTES_PER_SECTOR - 1;
+const uint16_t BYTES_PER_SECTOR = 512;
+const uint16_t SECTOR_MASK = BYTES_PER_SECTOR - 1;
 const uint8_t  BYTES_PER_SECTOR_SHIFT = 9;
 const uint16_t MINIMUM_UPCASE_SKIP = 512;
 const uint32_t BITMAP_CLUSTER = 2;
 const uint32_t UPCASE_CLUSTER = 3;
-uint32_t ROOT_CLUSTER = 4;
+const uint32_t ROOT_CLUSTER = 4;
 //------------------------------------------------------------------------------
 #define PRINT_FORMAT_PROGRESS 1
 #if !PRINT_FORMAT_PROGRESS
@@ -75,23 +75,26 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   }
   MbrPart_t *pt = &mbr.part[m_part];
   
+  // Determine partition layout.  
+  m_relativeSectors = getLe32(pt->relativeSectors);
   sectorCount = getLe32(pt->totalSectors);
   
   bool has_volume_label = partVol.getVolumeLabel(volName, sizeof(volName));
+
   #if defined(DBG_PRINT)
 	Serial.printf("    m_sectorsPerCluster:%u\n", partVol.sectorsPerCluster());
-	Serial.printf("    m_sectorsPerClusterShift:%u\n", partVol.getExFatVol()->sectorsPerClusterShift());
+	//Serial.printf("    m_sectorsPerClusterShift:%u\n", partVol.getExFatVol()->sectorsPerClusterShift());
 	Serial.printf("    m_relativeSectors:%u\n", getLe32(pt->relativeSectors));
-	Serial.printf("    m_clusterHeapStartSector: %u\n", partVol.getExFatVol()->clusterHeapStartSector() );
-	Serial.printf("    m_fatLength: %u\n", partVol.getExFatVol()->fatLength());
+	//Serial.printf("    m_clusterHeapStartSector: %u\n", partVol.getExFatVol()->clusterHeapStartSector() );
+	//Serial.printf("    m_fatLength: %u\n", partVol.getExFatVol()->fatLength());
 	Serial.printf("    m_fatStartSector: %u\n", partVol.fatStartSector());
 	Serial.printf("    m_fatType: %d\n", partVol.fatType());
 	Serial.printf("    m_clusterCount: %u\n", partVol.clusterCount());
 	Serial.printf("    m_totalSectors: %u\n", sectorCount);
-	Serial.printf("    m_bytesPerSector: %u\n", partVol.getExFatVol()->bytesPerSector());
-	Serial.printf("    m_bytesPerCluster: %u\n", partVol.getExFatVol()->bytesPerCluster());
-	Serial.printf("    m_rootDirectoryCluster: %u\n", partVol.getExFatVol()->rootDirectoryCluster());
-	Serial.printf("    m_bytesPerSectorShift: %u\n", partVol.getExFatVol()->bytesPerSectorShift());
+	//Serial.printf("    m_bytesPerSector: %u\n", partVol.getExFatVol()->bytesPerSector());
+	//Serial.printf("    m_bytesPerCluster: %u\n", partVol.getExFatVol()->bytesPerCluster());
+	//Serial.printf("    m_rootDirectoryCluster: %u\n", partVol.getExFatVol()->rootDirectoryCluster());
+	//Serial.printf("    m_bytesPerSectorShift: %u\n", partVol.getExFatVol()->bytesPerSectorShift());
 	Serial.println();
   #endif
   
@@ -101,35 +104,30 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
     goto fail;
   }
   
-  
-  
   //BYTES_PER_SECTOR = partVol.getExFatVol()->bytesPerSector();
   //SECTOR_MASK = BYTES_PER_SECTOR - 1;
-  ROOT_CLUSTER = partVol.getExFatVol()->rootDirectoryCluster();
-  
-  // Determine partition layout.  
-  m_relativeSectors = getLe32(pt->relativeSectors);
+  //ROOT_CLUSTER = partVol.getExFatVol()->rootDirectoryCluster();
   
   // Determine partition layout.
   for (m = 1, vs = 0; m && sectorCount > m; m <<= 1, vs++) {}
-  //sectorsPerClusterShift = vs < 29 ? 8 : (vs - 11)/2;
-  sectorsPerClusterShift = partVol.getExFatVol()->sectorsPerClusterShift();
+  sectorsPerClusterShift = vs < 29 ? 8 : (vs - 11)/2;
+  //sectorsPerClusterShift = partVol.getExFatVol()->sectorsPerClusterShift();
   
   //1 << n is the same as raising 2 to the power n
-  //sectorsPerCluster = 1UL << sectorsPerClusterShift;
-  sectorsPerCluster = partVol.sectorsPerCluster();
+  sectorsPerCluster = 1UL << sectorsPerClusterShift;
+  //sectorsPerCluster = partVol.getExFatVol()->sectorsPerCluster();
   
   //The FatLength field shall describe the length, in sectors, of each FAT table
   //   At least (ClusterCount + 2) * 2^2/ 2^BytesPerSectorShiftrounded up to the nearest integer
   //   At most (ClusterHeapOffset - FatOffset) / NumberOfFats rounded down to the nearest integer
-  //fatLength = 1UL << (vs < 27 ? 13 : (vs + 1)/2);
-  fatLength = partVol.getExFatVol()->fatLength();
+  fatLength = 1UL << (vs < 27 ? 13 : (vs + 1)/2);
+  //fatLength = partVol.getExFatVol()->fatLength();
   
   //The FatOffset field shall describe the volume-relative sector offset of the First FAT
   //   At least 24, which accounts for the sectors the Main Boot and Backup Boot regions consume
   //   At most ClusterHeapOffset - (FatLength * NumberOfFats), which accounts for the sectors the Cluster Heap consumes
-  //fatOffset = fatLength;
-  fatOffset = partVol.fatStartSector() - m_relativeSectors;
+  fatOffset = fatLength;
+  //fatOffset = partVol.fatStartSector() - m_relativeSectors;
   
   //The PartitionOffset field shall describe the media-relative sector offset of the partition which hosts the given exFAT volume
   //partitionOffset = 2*fatLength;
@@ -138,14 +136,14 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   //The ClusterHeapOffset field shall describe the volume-relative sector offset of the Cluster Heap
   //   At least FatOffset + FatLength * NumberOfFats, to account for the sectors all the preceding regions consume
   //   At most 2^32- 1 or VolumeLength - (ClusterCount * 2^SectorsPerClusterShift), whichever calculation is less
-  //clusterHeapOffset = 2*fatLength;
-  clusterHeapOffset = partVol.getExFatVol()->clusterHeapStartSector() - m_relativeSectors;
+  clusterHeapOffset = 2*fatLength;
+  //clusterHeapOffset = partVol.getExFatVol()->clusterHeapStartSector() - m_relativeSectors;
   
   //The ClusterCount field shall describe the number of clusters the Cluster Heap contains
-  //   (VolumeLength - ClusterHeapOffset) / 2SectorsPerClusterShiftrounded down to the nearest integer, which is exactly the number of clusters which can fit between the beginning of the Cluster Heap and the end of the volume
+  //   (VolumeLength - ClusterHeapOffset) / 2^SectorsPerClusterShift rounded down to the nearest integer, which is exactly the number of clusters which can fit between the beginning of the Cluster Heap and the end of the volume
   //   232- 11, which is the maximum number of clusters a FAT can describe
-  //clusterCount = (sectorCount - 4*fatLength) >> sectorsPerClusterShift;
-  clusterCount = partVol.clusterCount();
+  clusterCount = (sectorCount - 4*fatLength) >> sectorsPerClusterShift;
+  //clusterCount = partVol.clusterCount();
   
   //The VolumeLength field shall describe the size of the given exFAT volume in sectors
   //   At least 2^20/ 2^BytesPerSectorShift, which ensures the smallest volume is no less than 1MB
@@ -162,7 +160,7 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   	Serial.printf("cluster 2 bitmap: %u\n",partitionOffset + clusterHeapOffset);
   	Serial.printf("Up case table: %u\n",partitionOffset + clusterHeapOffset + sectorsPerCluster);
   #endif
-
+  
 //--------------------  WRITE MBR ----------
 
   if (!writeMbr()) {
@@ -299,10 +297,10 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
 #endif
   memset(secBuf, 0, BYTES_PER_SECTOR);
   // Allocate two reserved clusters, bitmap, upcase, and root clusters.
-  secBuf[0] = 0XF8;
-  for (size_t i = 1; i < 20; i++) {
-    secBuf[i] = 0XFF;
-  }
+	  secBuf[0] = 0XF8;
+	  for (size_t i = 1; i < 20; i++) {
+		secBuf[i] = 0XFF;
+	  }
   for (uint32_t i = 0; i < ns; i++) {
     if (i%(ns/32) == 0) {
       writeMsg(pr, ".");
@@ -327,7 +325,7 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
   ns = (bitmapSize + BYTES_PER_SECTOR - 1)/BYTES_PER_SECTOR;
 #if defined(DBG_PRINT)
   Serial.printf("\tWriting Sector: %d\n", sector-partitionOffset);
-  Serial.printf("bitmapSize: %d, ns: %d\n", bitmapSize, ns);
+  Serial.printf("sectorsPerCluster: %d, bitmapSize: %d, ns: %d\n", sectorsPerCluster, bitmapSize, ns);
 #endif
   if (ns > sectorsPerCluster) {
     DBG_FAIL_MACRO;
@@ -398,8 +396,11 @@ bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr)
     }
   }
   writeMsg(pr, "Format done\r\n");
-  m_dev->syncDevice();
+  // what happens if I tell the partion to begin again?
+  partVol.begin(m_dev, true, m_part+1);  // need to 1 bias again...
+  Serial.printf("free clusters after begin on partVol: %u\n", partVol.freeClusterCount());
   if (has_volume_label) partVol.setVolumeLabel(volName);
+  m_dev->syncDevice();
   return true;
 
  fail:
@@ -507,3 +508,4 @@ bool PFsExFatFormatter::writeUpcase(uint32_t sector) {
  fail:
   return false;
 }
+

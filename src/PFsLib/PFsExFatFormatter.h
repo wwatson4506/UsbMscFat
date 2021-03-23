@@ -48,7 +48,8 @@ class PFsExFatFormatter {
   bool format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr);
 
  private:
-   bool writeMbr();
+ 
+  bool writeMbr();
   bool syncUpcase();
   bool writeUpcase(uint32_t sector);
   bool writeUpcaseByte(uint8_t b);
@@ -75,6 +76,8 @@ class PFsExFatFormatter {
   uint32_t sectorCount;
   uint8_t sectorsPerClusterShift;
   uint32_t m_relativeSectors;
+  uint32_t m_part_relativeSectors;
+  uint32_t m_bytesPerCluster;
   uint8_t m_part;
   char volName[32];
   
