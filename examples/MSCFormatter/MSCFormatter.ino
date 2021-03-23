@@ -9,125 +9,36 @@ ArduinoOutStream cout(Serial);
 USBHost myusb;
 USBHub hub1(myusb);
 USBHub hub2(myusb);
-USBHub hub3(myusb);
-USBHub hub4(myusb);
 
 // Setup MSC for the number of USB Drives you are using. (Two for this example)
 // Mutiple  USB drives can be used. Hot plugging is supported. There is a slight
 // delay after a USB MSC device is plugged in. This is waiting for initialization
 // but after it is initialized ther should be no delay.
-msController msDrive1(myusb);
+#define CNT_PARITIONS 10 
+PFsVolume partVols[CNT_PARITIONS];
+uint8_t partVols_drive_index[CNT_PARITIONS];
+uint8_t count_partVols = 0;
+  
+#define CNT_MSDRIVES 3
+msController msDrives[CNT_MSDRIVES](myusb);
+UsbFs msc[CNT_MSDRIVES];
+bool g_exfat_dump_changed_sectors = true;
 
 #define SD_DRIVE 1
 #define MS_DRIVE 2
+#define SD_CONFIG SdioConfig(FIFO_SDIO)
+#define SD_SPICONFIG SdioConfig(FIFO_SDIO)
 
-// set up variables using the mscFS utility library functions:
-UsbFs msc1;
-UsbFs msc2;
 
 SdFs sd;
+SdFs sdSPI;
+#define SD_SPI_CS 10
+#define SPI_SPEED SD_SCK_MHZ(33)  // adjust to sd card 
+
 PFsFatFormatter FatFormatter;
 PFsExFatFormatter ExFatFormatter;
 uint8_t  sectorBuffer[512];
-  uint8_t volName[32];
-
-typedef struct {
-  uint32_t free;
-  uint32_t todo;
-  uint32_t clusters_per_sector;
-} _gfcc_t;
-
-
-void _getfreeclustercountCB(uint32_t token, uint8_t *buffer) 
-{
-  digitalWriteFast(1, HIGH);
-  _gfcc_t *gfcc = (_gfcc_t *)token;
-  uint16_t cnt = gfcc->clusters_per_sector;
-  if (cnt > gfcc->todo) cnt = gfcc->todo;
-  gfcc->todo -= cnt; // update count here...
-
-  if (gfcc->clusters_per_sector == 512/2) {
-    // fat16
-    uint16_t *fat16 = (uint16_t *)buffer;
-    while (cnt-- ) {
-      if (*fat16++ == 0) gfcc->free++;
-    }
-  } else {
-    uint32_t *fat32 = (uint32_t *)buffer;
-    while (cnt-- ) {
-      if (*fat32++ == 0) gfcc->free++;
-    }
-  }
-
-  digitalWriteFast(1, LOW);
-}
-
-//-------------------------------------------------------------------------------------------------
-uint32_t GetFreeClusterCount(USBmscInterface *usmsci, PFsVolume &partVol)
-{
-
-  FatVolume* fatvol =  partVol.getFatVol();
-  if (!fatvol) return 0;
-
-  _gfcc_t gfcc; 
-  gfcc.free = 0;
-
-  switch (partVol.fatType()) {
-    default: return 0;
-    case FAT_TYPE_FAT16: gfcc.clusters_per_sector = 512/2; break;
-    case FAT_TYPE_FAT32: gfcc.clusters_per_sector = 512/4; break;
-  }
-  gfcc.todo = fatvol->clusterCount() + 2;
-
-  digitalWriteFast(0, HIGH);
-  usmsci->readSectorsWithCB(fatvol->fatStartSector(), gfcc.todo / gfcc.clusters_per_sector + 1, 
-      &_getfreeclustercountCB, (uint32_t)&gfcc);
-  digitalWriteFast(0, LOW);
-
-  return gfcc.free;
-}
-bool getPartitionVolumeLabel(PFsVolume &partVol, uint8_t *pszVolName, uint16_t cb) {
-  uint8_t buf[512];
-  if (!pszVolName || (cb < 12)) return false; // don't want to deal with it
-
-  PFsFile root;
-  if (!root.openRoot(&partVol)) return false;
-  root.read(buf, 32);
-  //dump_hexbytes(buf, 32);
-
-  switch (partVol.fatType())
-  {
-    case FAT_TYPE_FAT12:
-    case FAT_TYPE_FAT16:
-    case FAT_TYPE_FAT32:
-      {
-        DirFat_t *dir;
-        dir = reinterpret_cast<DirFat_t*>(buf);
-        if ((dir->attributes & 0x08) == 0) return false; // not a directory...
-        size_t i;
-        for (i = 0; i < 11; i++) {
-          pszVolName[i]  = dir->name[i];
-        }
-        while ((i > 0) && (pszVolName[i - 1] == ' ')) i--; // trim off trailing blanks
-        pszVolName[i] = 0;
-      }
-      break;
-    case FAT_TYPE_EXFAT:
-      {
-        DirLabel_t *dir;
-        dir = reinterpret_cast<DirLabel_t*>(buf);
-        if (dir->type != EXFAT_TYPE_LABEL) return false; // not a label?
-        size_t i;
-        for (i = 0; i < dir->labelLength; i++) {
-          pszVolName[i] = dir->unicode[2 * i];
-        }
-        pszVolName[i] = 0;
-      }
-      break;
-  }
-
-  return true;
-}
+uint8_t volName[32];
 
 //----------------------------------------------------------------
 bool mbrDmp(BlockDeviceInterface *blockDev) {
@@ -147,26 +58,27 @@ bool mbrDmp(BlockDeviceInterface *blockDev) {
     //      valid = false;
     //    }
     switch (pt->type) {
-      case 4:
-      case 6:
-      case 0xe:
-        Serial.print("FAT16:\t");
-        break;
-      case 11:
-      case 12:
-        Serial.print("FAT32:\t");
-        break;
-      case 7:
-        Serial.print("exFAT:\t");
-        break;
-        case 0xf:
-        Serial.print("Extend:\t");
-        break;
-      default:
-        Serial.print("pt_#");
-        Serial.print(pt->type);
-        Serial.print(":\t");
-        break;
+    case 4:
+    case 6:
+    case 0xe:
+      Serial.print("FAT16:\t");
+      break;
+    case 11:
+    case 12:
+      Serial.print("FAT32:\t");
+      break;
+    case 7:
+      Serial.print("exFAT:\t");
+      break;
+    case 0xf:
+      Serial.print("Extend:\t");
+      break;
+    case 0x83: Serial.print("ext2/3/4:\t"); break; 
+    default:
+      Serial.print("pt_#");
+      Serial.print(pt->type);
+      Serial.print(":\t");
+      break;
     }
     Serial.print( int(ip)); Serial.print( ',');
     Serial.print(int(pt->boot), HEX); Serial.print( ',');
@@ -204,12 +116,36 @@ void dump_hexbytes(const void *ptr, int len)
     len -= 32;
   }
 }
+//----------------------------------------------------------------
+
+void compare_dump_hexbytes(const void *ptr, const uint8_t *compare_buf, int len)
+{
+  if (ptr == NULL || len <= 0) return;
+  const uint8_t *p = (const uint8_t *)ptr;
+  while (len) {
+    for (uint8_t i = 0; i < 32; i++) {
+      if (i > len) break;
+      Serial.printf("%c%02X", (p[i]==compare_buf[i])? ' ' : '*',p[i]);
+    }
+    Serial.print(":");
+    for (uint8_t i = 0; i < 32; i++) {
+      if (i > len) break;
+      Serial.printf("%c", ((p[i] >= ' ') && (p[i] <= '~')) ? p[i] : '.');
+    }
+    Serial.println();
+    p += 32;
+    compare_buf += 32;
+    len -= 32;
+  }
+}
+
+
 
 
 //----------------------------------------------------------------
 
 // Function to handle one MS Drive...
-void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
+void processMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
 {
   Serial.printf("Initialize USB drive...");
   //cmsReport = 0;
@@ -217,117 +153,159 @@ void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
     Serial.println("");
     msc.errorPrint(&Serial);
     Serial.printf("initialization drive %u failed.\n", drive_number);
-  } else {
-    Serial.printf("USB drive %u is present.\n", drive_number);
+    return;
   }
-  //cmsReport = -1;
-
-  //  mbrDmp( &msc );
   mbrDmp( msc.usbDrive() );
 
-  #if 1
-  bool partition_valid[4];
-  PFsVolume partVol[4];
-  char volName[32];
-
+  // lets see if we have any partitions to add to our list...
   for (uint8_t i = 0; i < 4; i++) {
-    partition_valid[i] = partVol[i].begin((USBMSCDevice*)msc.usbDrive(), true, i+1);
-    Serial.printf("Partition %u valid:%u\n", i, partition_valid[i]);
-  }
-  for (uint8_t i = 0; i < 4; i++) {
-    if(partition_valid[i]) {
-      switch (partVol[i].fatType())
-      {
-        case FAT_TYPE_FAT12: Serial.printf("%d:>> Fat12: ", i); break;
-        case FAT_TYPE_FAT16: Serial.printf("%d:>> Fat16: ", i); break;
-        case FAT_TYPE_FAT32: Serial.printf("%d:>> Fat32: ", i); break;
-        case FAT_TYPE_EXFAT: Serial.printf("%d:>> ExFat: ", i); break;
-      }
-      if (partVol[i].getVolumeLabel(volName, sizeof(volName))) {
-        Serial.printf("Volume name:(%s)", volName);
-      }
-      elapsedMicros em_sizes = 0;
-      uint32_t free_cluster_count = partVol[i].freeClusterCount();
-      uint64_t used_size =  (uint64_t)(partVol[i].clusterCount() - free_cluster_count)
-                            * (uint64_t)partVol[i].bytesPerCluster();
-      uint64_t total_size = (uint64_t)partVol[i].clusterCount() * (uint64_t)partVol[i].bytesPerCluster();
-      Serial.printf(" Partition Total Size:%llu Used:%llu time us: %u\n", total_size, used_size, (uint32_t)em_sizes);
+    if (count_partVols == CNT_PARITIONS) return; // don't overrun
+    if (partVols[count_partVols].begin((USBMSCDevice*)msc.usbDrive(), true, i + 1)) {
+      Serial.printf("drive %u Partition %u valid:%u\n", drive_number, i);
+      partVols_drive_index[count_partVols] = drive_number;
 
-      em_sizes = 0; // lets see how long this one takes. 
-      uint32_t free_clusters_fast = GetFreeClusterCount(msc.usbDrive(), partVol[i]);
-      Serial.printf("    Free Clusters: API: %u by CB:%u time us: %u\n", free_cluster_count, free_clusters_fast, (uint32_t)em_sizes);
-      
-      em_sizes = 0; // lets see how long this one takes. 
-      uint32_t free_clusters_info = partVol[i].getFSInfoSectorFreeClusterCount();
-      Serial.printf("    Free Clusters: Info: %u time us: %u\n", free_clusters_info, (uint32_t)em_sizes);
-
-
-      partVol[i].ls();
+      count_partVols++;
     }
   }
-
-  #else
-  for (uint8_t i = 1; i < 5; i++) {
-    PFsVolume partVol;
-    uint8_t volName[32];
-    if (!partVol.begin(msc.usbDrive(), true, i)) continue; // not a valid volume.
-    partVol.chvol();
-
-    switch (partVol.fatType())
-    {
-      case FAT_TYPE_FAT12: Serial.print("\n>> Fat12: "); break;
-      case FAT_TYPE_FAT16: Serial.print("\n>> Fat16: "); break;
-      case FAT_TYPE_FAT32: Serial.print("\n>> Fat32: "); break;
-      case FAT_TYPE_EXFAT: Serial.print("\n>> ExFat: "); break;
-    }
-    if (getPartitionVolumeLabel(partVol, volName, sizeof(volName))) {
-      Serial.printf("Volume name:(%s)", volName);
-    }
-    elapsedMicros em_sizes = 0;
-    uint64_t used_size =  (uint64_t)(partVol.clusterCount() - partVol.freeClusterCount())
-                          * (uint64_t)partVol.bytesPerCluster();
-    uint64_t total_size = (uint64_t)partVol.clusterCount() * (uint64_t)partVol.bytesPerCluster();
-    Serial.printf(" Partition Total Size:%llu Used:%llu time us: %u\n", total_size, used_size, (uint32_t)em_sizes);
-
-    partVol.ls();
-  }
-  #endif
 }
 
 //----------------------------------------------------------------
-
 // Function to handle one MS Drive...
-void formatter(uint8_t drive_number, msController &msDrive, UsbFs &msc, uint8_t part)
+void processSDDrive()
 {
-  Serial.printf("Initialize USB drive...");
-  if (!msc.begin(&msDrive)) {
-    Serial.println("");
-    msc.errorPrint(&Serial);
-    Serial.printf("initialization drive %u failed.\n", drive_number);
-  } else {
-    Serial.printf("USB drive %u is present.\n", drive_number);
+    Serial.printf("\nInitialize SDIO SD card...");
+
+  if (!sd.begin(SD_CONFIG)) {
+    Serial.println("initialization failed.\n");
+    return;
   }
-
-  //mbrDmp( msc.usbDrive() );
-
+  mbrDmp(sd.card() );
   PFsVolume partVol;
-  //uint8_t volName[32];
-  bool partition_valid;
 
-    partition_valid = partVol.begin((USBMSCDevice*)msc.usbDrive(), true, part+1);
-    Serial.printf("Partition %u valid:%u\n", part, partition_valid);
-  
-  if(partition_valid && partVol.fatType() != FAT_TYPE_FAT12){
-    if(partVol.fatType() != FAT_TYPE_EXFAT) {
-      FatFormatter.format(partVol, sectorBuffer, &Serial);
-    } else {
-      Serial.println("ExFatFormatter - WIP");
-      ExFatFormatter.format(partVol, sectorBuffer, &Serial);
+  for (uint8_t i = 0; i < 4; i++) {
+  if (count_partVols == CNT_PARITIONS) return; // don't overrun
+    if (partVols[count_partVols].begin(sd.card(), true, i + 1)) {
+      Serial.printf("drive s Partition %u valid\n", i);
+      partVols_drive_index[count_partVols] = 0xff;
+      count_partVols++;
     }
+  }
+}
+
+void ProcessSPISD() {
+    Serial.printf("\nInitialize SPI SD card...");
+
+  if(!sdSPI.begin(SdSpiConfig(SD_SPI_CS, SHARED_SPI, SPI_SPEED))) {
+    Serial.println("initialization failed.\n");
+    return;
+  }
+  mbrDmp(sdSPI.card() );
+  for (uint8_t i = 0; i < 4; i++) {
+  if (count_partVols == CNT_PARITIONS) return; // don't overrun
+    if (partVols[count_partVols].begin(sdSPI.card(), true, i + 1)) {
+      partVols_drive_index[count_partVols] = 0xfe;
+      Serial.printf("drive g Partition %u valid\n", i);
+      count_partVols++;
+    }
+  }
+}
+
+
+void ShowPartitionList() {
+  Serial.println("\n***** Partition List *****");
+  char volName[32];
+  for (uint8_t i = 0; i < count_partVols; i++)  {
+    Serial.printf("%d(%x:%x):>> ", i, partVols_drive_index[i], partVols[i].part());
+    switch (partVols[i].fatType())
+    {
+    case FAT_TYPE_FAT12: Serial.printf("Fat12: "); break;
+    case FAT_TYPE_FAT16: Serial.printf("Fat16: "); break;
+    case FAT_TYPE_FAT32: Serial.printf("Fat32: "); break;
+    case FAT_TYPE_EXFAT: Serial.printf("ExFat: "); break;
+    }
+    if (partVols[i].getVolumeLabel(volName, sizeof(volName))) {
+      Serial.printf("Volume name:(%s)", volName);
+    }
+    elapsedMicros em_sizes = 0;
+    uint32_t free_cluster_count = partVols[i].freeClusterCount();
+    uint64_t used_size =  (uint64_t)(partVols[i].clusterCount() - free_cluster_count)
+                          * (uint64_t)partVols[i].bytesPerCluster();
+    uint64_t total_size = (uint64_t)partVols[i].clusterCount() * (uint64_t)partVols[i].bytesPerCluster();
+    Serial.printf(" Partition Total Size:%llu Used:%llu time us: %u\n", total_size, used_size, (uint32_t)em_sizes);
+  }
+}
+
+
+//----------------------------------------------------------------
+// Function to handle one MS Drive...
+void formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive)
+{
+
+  if (fat_type == 0) fat_type = partVol.fatType();
+
+  if (fat_type != FAT_TYPE_FAT12) {
+    // 
+    uint8_t buffer[512];
+    MbrSector_t *mbr = (MbrSector_t *)buffer;
+    if (!partVol.blockDevice()->readSector(0, buffer)) return;
+    MbrPart_t *pt = &mbr->part[partVol.part() - 1];
+
+    uint32_t sector = getLe32(pt->relativeSectors);
+
+    // I am going to read in 24 sectors for EXFat.. 
+    uint8_t *bpb_area = (uint8_t*)malloc(512*24); 
+    if (!bpb_area) {
+      Serial.println("Unable to allocate dump memory");
+      return;
+    }
+    // Lets just read in the top 24 sectors;
+    uint8_t *sector_buffer = bpb_area;
+    for (uint32_t i = 0; i < 24; i++) {
+      partVol.blockDevice()->readSector(sector+i, sector_buffer);
+      sector_buffer += 512;
+    }
+
+    if (dump_drive) {
+      sector_buffer = bpb_area;
+      for (uint32_t i = 0; i < 12; i++) {
+        Serial.printf("\nSector %u(%u)\n", i, sector);
+        dump_hexbytes(sector_buffer, 512);
+        sector++;
+        sector_buffer += 512;
+      }
+      for (uint32_t i = 12; i < 24; i++) {
+        Serial.printf("\nSector %u(%u)\n", i, sector);
+        compare_dump_hexbytes(sector_buffer, sector_buffer - (512*12), 512);
+        sector++;
+        sector_buffer += 512;
+      }
+
+    } else {  
+      if (fat_type != FAT_TYPE_EXFAT) {
+        FatFormatter.format(partVol, sectorBuffer, &Serial);
+      } else {
+        Serial.println("ExFatFormatter - WIP");
+        ExFatFormatter.format(partVol, sectorBuffer, &Serial);
+        if (g_exfat_dump_changed_sectors) {
+          // Now lets see what changed
+          uint8_t *sector_buffer = bpb_area;
+          for (uint32_t i = 0; i < 24; i++) {
+            partVol.blockDevice()->readSector(sector, buffer);
+            Serial.printf("Sector %u(%u)\n", i, sector);
+            if (memcmp(buffer, sector_buffer, 512)) {
+              compare_dump_hexbytes(buffer, sector_buffer, 512);
+              Serial.println();
+            }
+            sector++;
+            sector_buffer += 512;
+          }
+        }
+      }
+    }
+    free(bpb_area); 
   }
   else
     Serial.println("Cannot format an invalid partition");
-  
 }
 //----------------------------------------------------------------
 
@@ -336,9 +314,16 @@ void setup() {
   int *pp = 0;
   *pp = 5;
 #endif
-pinMode(0, OUTPUT);
-pinMode(1, OUTPUT);
-pinMode(2, OUTPUT);
+  pinMode(0, OUTPUT);
+  pinMode(1, OUTPUT);
+  pinMode(2, OUTPUT);
+
+  // allow for SD on SPI...
+  SPI.begin();
+  #if defined(SD_SPI_CS)
+  pinMode(SD_SPI_CS, OUTPUT);
+  digitalWriteFast(SD_SPI_CS, HIGH);
+  #endif
   // Open serial communications and wait for port to open:
   Serial.begin(9600);
   while (!Serial) {
@@ -348,7 +333,7 @@ pinMode(2, OUTPUT);
   // Start USBHost_t36, HUB(s) and USB devices.
   myusb.begin();
 
- cout << F(
+  cout << F(
          "\n"
          "Cards up to 2 GiB (GiB = 2^30 bytes) will be formated FAT16.\n"
          "Cards larger than 2 GiB and up to 32 GiB will be formatted\n"
@@ -361,44 +346,95 @@ pinMode(2, OUTPUT);
 void loop() {
 
   myusb.Task();
-  if (!msDrive1) {
-    Serial.println("Waiting up to 5 seconds for USB drive 1");
+
+  count_partVols = 0;
+
+  if (!msDrives[0]) {
+    Serial.println("Waiting up to 5 seconds for a USB drive ");
     elapsedMillis em = 0;
-    while (!msDrive1 && (em < 5000) )  myusb.Task();
+    while (em < 5000) {
+      myusb.Task();
+      for (uint8_t i = 0; i < CNT_MSDRIVES; i++) if (msDrives[i]) break;
+    }
   }
 
-  if (msDrive1) {
-    procesMSDrive(1, msDrive1, msc1);
+  for (uint8_t i = 0; i < CNT_MSDRIVES; i++) {
+    if (msDrives[i]) {
+      processMSDrive(i, msDrives[i], msc[i]);
+    }    
   }
+  processSDDrive();
+  ProcessSPISD();
+  ShowPartitionList();
 
   Serial.println("done...");
-  Serial.println("Enter 0, 1 , 2, or 3 for Partition or Enter to Bypass");
-  char temp = '0';
-  while ( !Serial.available() );
-  while ( Serial.available() ) {
-    temp = Serial.read();
-  switch(temp) {
-    case('0'):
-      //drive 1, , , partition 0-3
-      formatter(1, msDrive1, msc1, 0);
-      break;
-    case('1'):
-      //drive 1, , , partition 0-3
-      formatter(1, msDrive1, msc1, 1);
-      break;
-    case('2'):
-      //drive 1, , , partition 0-3
-      formatter(1, msDrive1, msc1, 2);
-      break;
-    case('3'):
-      //drive 1, , , partition 0-3
-      formatter(1, msDrive1, msc1, 3);
-      break;
-    default:
-      break;
-  }
-  }
+  Serial.println("Enter command:");
 
+  while ( !Serial.available() );
+  uint8_t commmand = Serial.read();
+
+  int ch = Serial.read();
+  while (ch == ' ') ch = Serial.read();
+  uint8_t partVol_index = 0;
+  while ((ch >= '0') && (ch <= '9')) {
+    partVol_index = partVol_index * 10 + ch - '0';
+    ch = Serial.read(); 
+  }
+  while (ch == ' ') ch = Serial.read();
+  uint8_t fat_type = 0;
+  if (partVol_index < count_partVols) {
+    switch(commmand) {
+      default:
+        Serial.println("Commands:");
+        Serial.println("  f <partition> [16|32|ex] - to format");
+        Serial.println("  v <partition> <label> - to change volume label");
+        Serial.println("  d <partition> - to dump first sectors");
+        Serial.println("  l <partition> - to do ls command on that partition");
+        Serial.println("  c -  toggle on/off format show changed data");
+        break;      
+      case 'f':
+        // if there is an optional parameter try it... 
+        switch(ch) {
+          case '1': fat_type = FAT_TYPE_FAT16; break;
+          case '3': fat_type = FAT_TYPE_FAT32; break;
+          case 'e': fat_type = FAT_TYPE_EXFAT; break;
+        }
+
+        Serial.printf("\n **** Start format partition %d ****\n", partVol_index);
+        formatter(partVols[partVol_index], fat_type, false); 
+        break;
+
+      case 'd':
+        Serial.printf("\n **** Start dump partition %d ****\n", partVol_index);
+        formatter(partVols[partVol_index], 0, true); 
+        break;
+      case 'v':
+        {
+          char new_volume_name[30];
+          int ii = 0;
+          while (ch > ' ') {
+            new_volume_name[ii++] = ch;
+            if (ii == (sizeof(new_volume_name)-1)) break;
+            ch = Serial.read();
+          }
+          new_volume_name[ii] = 0;
+          Serial.printf("Try setting partition index %u to %s - ", partVol_index, new_volume_name);
+          if (partVols[partVol_index].setVolumeLabel(new_volume_name)) Serial.println("*** Succeeded ***");
+          else Serial.println("*** failed ***");
+        }
+        break;
+      case 'c': 
+        g_exfat_dump_changed_sectors = !g_exfat_dump_changed_sectors; 
+        break;
+      case 'l':
+
+        Serial.printf("\n **** List fillScreen partition %d ****\n", partVol_index);
+        partVols[partVol_index].ls();
+        break;
+
+    }
+  }
+  while (Serial.read() != -1);
 
   Serial.println("Press any key to run again");
   while (Serial.read() == -1);

@@ -28,12 +28,12 @@ PFsVolume* PFsVolume::m_cwv = nullptr;
 bool PFsVolume::begin(USBMSCDevice* dev, bool setCwv, uint8_t part) {
   m_usmsci = dev;
   m_blockDev = dev;  
-  Serial.printf("PFsVolume::begin USBmscInterface(%x, %u)\n", (uint32_t)dev, part);  
+  //Serial.printf("PFsVolume::begin USBmscInterface(%x, %u)\n", (uint32_t)dev, part);  
   return begin((BlockDevice*)dev, setCwv, part);
 }
 
 bool PFsVolume::begin(BlockDevice* blockDev, bool setCwv, uint8_t part) {
-  Serial.printf("PFsVolume::begin(%x, %u)\n", (uint32_t)blockDev, part);
+  //Serial.printf("PFsVolume::begin(%x, %u)\n", (uint32_t)blockDev, part);
   if ((m_blockDev != blockDev) && (m_blockDev != nullptr)) m_usmsci = nullptr; // 
   m_blockDev = blockDev;
   m_part = part;
