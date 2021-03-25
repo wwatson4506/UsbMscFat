@@ -235,6 +235,34 @@ void ShowPartitionList() {
   }
 }
 
+void print_partion_info(PFsVolume &partVol) 
+{
+  uint8_t buffer[512];
+  MbrSector_t *mbr = (MbrSector_t *)buffer;
+  if (!partVol.blockDevice()->readSector(0, buffer)) return;
+  MbrPart_t *pt = &mbr->part[partVol.part() - 1];
+
+  uint32_t starting_sector = getLe32(pt->relativeSectors);
+  uint32_t sector_count = getLe32(pt->totalSectors);
+  Serial.printf("Starting Sector: %u, Sector Count: %u\n", starting_sector, sector_count);    
+
+  FatPartition *pfp = partVol.getFatVol();
+  if (pfp) {
+    Serial.printf("fatType:%u\n", pfp->fatType());
+    Serial.printf("bytesPerClusterShift:%u\n", pfp->bytesPerClusterShift());
+    Serial.printf("bytesPerCluster:%u\n", pfp->bytesPerCluster());
+    Serial.printf("bytesPerSector:%u\n", pfp->bytesPerSector());
+    Serial.printf("bytesPerSectorShift:%u\n", pfp->bytesPerSectorShift());
+    Serial.printf("sectorMask:%u\n", pfp->sectorMask());
+    Serial.printf("sectorsPerCluster:%u\n", pfp->sectorsPerCluster());
+    Serial.printf("sectorsPerFat:%u\n", pfp->sectorsPerFat());
+    Serial.printf("clusterCount:%u\n", pfp->clusterCount());
+    Serial.printf("dataStartSector:%u\n", pfp->dataStartSector());
+    Serial.printf("fatStartSector:%u\n", pfp->fatStartSector());
+    Serial.printf("rootDirEntryCount:%u\n", pfp->rootDirEntryCount());
+    Serial.printf("rootDirStart:%u\n", pfp->rootDirStart());
+  }
+} 
 
 //----------------------------------------------------------------
 // Function to handle one MS Drive...
@@ -267,6 +295,7 @@ void formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive)
 
     if (dump_drive) {
       sector_buffer = bpb_area;
+      
       for (uint32_t i = 0; i < 12; i++) {
         Serial.printf("\nSector %u(%u)\n", i, sector);
         dump_hexbytes(sector_buffer, 512);
@@ -389,6 +418,7 @@ void loop() {
         Serial.println("  f <partition> [16|32|ex] - to format");
         Serial.println("  v <partition> <label> - to change volume label");
         Serial.println("  d <partition> - to dump first sectors");
+        Serial.println("  p <partition> - print Partition info");
         Serial.println("  l <partition> - to do ls command on that partition");
         Serial.println("  c -  toggle on/off format show changed data");
         break;      
@@ -407,6 +437,10 @@ void loop() {
       case 'd':
         Serial.printf("\n **** Start dump partition %d ****\n", partVol_index);
         formatter(partVols[partVol_index], 0, true); 
+        break;
+      case 'p':
+        Serial.printf("\n **** print partition info %d ****\n", partVol_index);
+        print_partion_info(partVols[partVol_index]); 
         break;
       case 'v':
         {
