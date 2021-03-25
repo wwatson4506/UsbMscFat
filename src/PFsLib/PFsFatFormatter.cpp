@@ -122,10 +122,14 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr) {
 //  }
  
   if (rtn) {
+#if defined(DBG_Print)
     Serial.printf("free clusters after format: %u\n", partVol.freeClusterCount());
+#endif
     // what happens if I tell the partion to begin again?
     partVol.begin(m_dev, true, m_part+1);  // need to 1 bias again...
+#if defined(DBG_Print)
     Serial.printf("free clusters after begin on partVol: %u\n", partVol.freeClusterCount());
+#endif
 	m_dev->syncDevice();
 	
     if (has_volume_label) partVol.setVolumeLabel(volName);
@@ -152,6 +156,9 @@ bool PFsFatFormatter::makeFat16() {
     nc = (m_sectorCount - m_dataStart)/m_sectorsPerCluster;
     m_fatSize = (nc + 2 + (BYTES_PER_SECTOR/2) - 1)/(BYTES_PER_SECTOR/2);
     r = BU16 + 1 + 2*m_fatSize + FAT16_ROOT_SECTOR_COUNT;
+#if defined(DBG_Print)
+    Serial.printf("m_dataStart:%u nc:%u m_fatSize:%u r:%u m_relativeSectors:%u\n", m_dataStart, nc, m_fatSize, r, m_relativeSectors);
+#endif
     if (m_dataStart >= r) {
       m_relativeSectors = m_dataStart - r + BU16;
       break;
@@ -186,12 +193,16 @@ bool PFsFatFormatter::makeFat16() {
 	//Added to keep relative sectors straight
 	m_relativeSectors = m_part_relativeSectors;
 	m_fatStart = m_relativeSectors + m_reservedSectorCount;
+  m_dataStart = m_fatStart + 2 * m_fatSize + FAT16_ROOT_SECTOR_COUNT;
 	m_totalSectors = m_sectorCount;
 
   // write MBR
   if (!writeMbr()) {
 	return false;
   }
+#if defined(DBG_Print)
+  Serial.printf("Updated partType: %d, dataStart: %d fatStart: %d, totalSectors: %d\n", m_partType, m_dataStart, m_fatStart, m_totalSectors);
+#endif
 
   initPbs();
   setLe16(pbs->bpb.bpb16.rootDirEntryCount, FAT16_ROOT_ENTRY_COUNT);
@@ -355,16 +366,50 @@ bool PFsFatFormatter::writeMbr() {
 }
 
 //------------------------------------------------------------------------------
+#define CSECTORS_PER_WRITE 32
 bool PFsFatFormatter::initFatDir(uint8_t fatType, uint32_t sectorCount) {
+#if defined(DBG_Print)
+  Serial.printf("PFsFatFormatter::initFatDir(%u, %u)\n", fatType, sectorCount);
+#endif
   size_t n;
-  memset(m_secBuf, 0, BYTES_PER_SECTOR);
+  uint32_t fat_sector = 1;
   writeMsg("Writing FAT ");
-  for (uint32_t i = 1; i < sectorCount; i++) {
-    if (!m_dev->writeSector(m_fatStart + i, m_secBuf)) {
-       return false;
+  if (sectorCount >= CSECTORS_PER_WRITE) {
+    uint8_t *large_buffer = (uint8_t *)malloc(BYTES_PER_SECTOR * CSECTORS_PER_WRITE);
+    if (large_buffer) {
+      memset(large_buffer, 0, BYTES_PER_SECTOR * CSECTORS_PER_WRITE);
+      uint32_t sectors_remaining = sectorCount;
+      uint32_t loops_per_dot = sectorCount/(32*CSECTORS_PER_WRITE);
+      uint32_t loop_count = 0;
+      while (sectors_remaining >= CSECTORS_PER_WRITE) {
+        if (!m_dev->writeSectors(m_fatStart + fat_sector, large_buffer, CSECTORS_PER_WRITE)) {
+           return false;
+        }
+        fat_sector += CSECTORS_PER_WRITE;
+        sectors_remaining -= CSECTORS_PER_WRITE;
+        if (++loop_count == loops_per_dot) {
+          writeMsg(".");
+          loop_count = 0;
+        }
+      }
+      if (sectors_remaining) {
+        if (!m_dev->writeSectors(m_fatStart + fat_sector, large_buffer, sectors_remaining)) {
+           return false;
+        }
+        fat_sector += sectors_remaining;
+      }
+      free(large_buffer);
     }
-    if ((i%(sectorCount/32)) == 0) {
-      writeMsg(".");
+  }
+  if (fat_sector < sectorCount) {
+    memset(m_secBuf, 0, BYTES_PER_SECTOR);
+    for (; fat_sector < sectorCount; fat_sector++) {
+      if (!m_dev->writeSector(m_fatStart + fat_sector, m_secBuf)) {
+         return false;
+      }
+      if ((fat_sector%(sectorCount/32)) == 0) {
+        writeMsg(".");
+      }
     }
   }
   writeMsg("\r\n");

@@ -439,8 +439,19 @@ void loop() {
         formatter(partVols[partVol_index], 0, true); 
         break;
       case 'p':
-        Serial.printf("\n **** print partition info %d ****\n", partVol_index);
-        print_partion_info(partVols[partVol_index]); 
+        while (partVol_index < count_partVols) {
+          Serial.printf("\n **** print partition info %d ****\n", partVol_index);
+          print_partion_info(partVols[partVol_index]); 
+          if ((ch >= '0') && (ch <= '9')) {
+            partVol_index = 0;
+            while ((ch >= '0') && (ch <= '9')) {
+              partVol_index = partVol_index * 10 + ch - '0';
+              ch = Serial.read(); 
+            }
+            while (ch == ' ') ch = Serial.read();
+          } else 
+            partVol_index = 0xff;
+        }
         break;
       case 'v':
         {
