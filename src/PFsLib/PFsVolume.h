@@ -25,11 +25,12 @@
 #ifndef PFsVolume_h
 #define PFsVolume_h
 /**
- * \file
+ * \fileF
  * \brief PFsVolume include file.
  */
 #include "PFsNew.h"
 #include <SdFat.h>
+#include "USBMSCDevice.h"
 //#include "../FatLib/FatLib.h"
 //#include "../ExFatLib/ExFatLib.h"
 
@@ -51,7 +52,15 @@ class PFsVolume {
    * \param[in] part partition to initialize.
    * \return true for success or false for failure.
    */
+  bool begin(USBMSCDevice* dev, bool setCwv = true, uint8_t part = 1);
   bool begin(BlockDevice* dev, bool setCwv = true, uint8_t part = 1);
+
+  FatVolume*  getFatVol() {return m_fVol;}
+  ExFatVolume* getExFatVol() { return m_xVol; }
+
+  uint8_t part() {return m_part;}
+  BlockDevice* blockDevice() {return m_blockDev;}
+
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
   // Use sectorsPerCluster(). blocksPerCluster() will be removed in the future.
   uint32_t blocksPerCluster() __attribute__ ((deprecated)) {return sectorsPerCluster();} //NOLINT
@@ -117,11 +126,27 @@ class PFsVolume {
     return m_fVol ? m_fVol->fatType() :
            m_xVol ? m_xVol->fatType() : 0;
   }
+  /** \return the cluster heap start sector. */
+  uint32_t clusterHeapStartSector() const {	  
+	return m_xVol ? m_xVol->clusterHeapStartSector() : 0;
+   }
+  /** \return the FAT length in sectors */
+  uint32_t fatLength() const {
+	  return m_xVol ? m_xVol->fatLength() : 0;
+   }
+   /** \return the power of two for sectors per cluster. */
+   uint8_t  sectorsPerClusterShift() const {
+	   return m_xVol ? m_xVol->sectorsPerClusterShift() : 0;;
+   }
+  
+  
   /** \return the free cluster count. */
-  uint32_t freeClusterCount() const {
-    return m_fVol ? m_fVol->freeClusterCount() :
-           m_xVol ? m_xVol->freeClusterCount() : 0;
-  }
+  uint32_t freeClusterCount();
+
+  // Only valid for Fat32
+  uint32_t getFSInfoSectorFreeClusterCount();
+  bool setUpdateFSInfoSectorFreeClusterCount(uint32_t free_count = (uint32_t)-1);
+
   /**
    * Check for BlockDevice busy.
    *
@@ -239,6 +264,24 @@ class PFsVolume {
     return m_fVol ? m_fVol->sectorsPerCluster() :
            m_xVol ? m_xVol->sectorsPerCluster() : 0;
   }
+
+  /** Retrieve a volume label name.
+   *
+   * \param[in] character buffer to re receive the name
+   *
+   * \param[in] size of buffer
+   *
+   * \return true for success or false for failure.
+   */
+  bool getVolumeLabel(char *volume_label, size_t cb) ;
+
+  /** set a volume label name.
+   *
+   * \param[in] Null terminated string with new volume label
+   *
+   * \return true for success or false for failure.
+   */
+  bool setVolumeLabel(char *volume_label) ;
 #if ENABLE_ARDUINO_SERIAL
   /** List directory contents.
    * \return true for success or false for failure.
@@ -388,5 +431,8 @@ class PFsVolume {
   FatVolume*   m_fVol = nullptr;
   ExFatVolume* m_xVol = nullptr;
   BlockDevice* m_blockDev;
+  USBMSCDevice* m_usmsci = nullptr;
+  uint8_t m_part;
+
 };
 #endif  // PFsVolume_h

@@ -50,8 +50,8 @@ class UsbBase : public Vol {
    * \param[in] msController drive.
    * \return true for success or false for failure.
    */
-  bool begin(msController *pdrv) {
-	return mscBegin(pdrv);
+  bool begin(msController *pdrv, bool setCwv = true, uint8_t part = 1) {
+	return mscBegin(pdrv, setCwv, part);
   }
   //----------------------------------------------------------------------------
   /** Initialize USB drive and file system for USB Drive.
@@ -59,8 +59,11 @@ class UsbBase : public Vol {
    * \param[in] msController drive configuration.
    * \return true for success or false for failure.
    */
-  bool mscBegin(msController *pDrive) {
-    return usbDriveBegin(pDrive) && Vol::begin(m_USBmscDrive);
+  bool mscBegin(msController *pDrive, bool setCwv = true, uint8_t part = 1) {
+    Serial.printf("UsbBase::mscBegin called %x %x %d\n", (uint32_t)pDrive, setCwv, part);
+    if (!usbDriveBegin(pDrive)) return false;
+    Serial.println("    After usbDriveBegin");
+    return Vol::begin((USBMSCDevice*)m_USBmscDrive, setCwv, part);
   }
   //----------------------------------------------------------------------------
   /** \return Pointer to USB MSC object. */
@@ -354,7 +357,7 @@ class UsbExFat : public UsbBase<ExFatVolume> {
  * \class USBFs
  * \brief SD file system class for FAT16, FAT32, and exFAT volumes.
  */
-class UsbFs : public UsbBase<FsVolume> {
+class UsbFs : public UsbBase<PFsVolume> {
  public:
   /** Format a SD card FAT or exFAT.
    *

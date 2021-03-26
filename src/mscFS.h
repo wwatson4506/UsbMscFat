@@ -36,7 +36,7 @@
 
 #if defined(__arm__)
   // Support everything on 32 bit boards with enough memory
-  #define MSCFAT_FILE FsFile
+  #define MSCFAT_FILE PFsFile
   #define MSCFAT_BASE UsbFs
   #define MSC_MAX_FILENAME_LEN 256
 #endif
@@ -137,8 +137,8 @@ class MSCClass : public FS
 {
 public:
 	MSCClass() { }
-	bool begin(msController *pDrive) {
-		return mscfs.begin(pDrive);
+	bool begin(msController *pDrive, bool setCwv = true, uint8_t part = 1) {
+		return mscfs.begin(pDrive, setCwv, part);
 	}
 	File open(const char *filepath, uint8_t mode = FILE_READ) {
 		oflag_t flags = O_READ;
@@ -168,13 +168,19 @@ public:
 		_cached_usedSize_valid = false;
 		return mscfs.rmdir(filepath);
 	}
-	uint64_t usedSize() {
+	uint64_t usedSize() {	
+		#if 1
+		return  (uint64_t)(mscfs.clusterCount() - mscfs.freeClusterCount())
+		  		* (uint64_t)mscfs.bytesPerCluster();
+		#else
+		Serial.printf("$$$mscFS::usedSize %u %llu\n", _cached_usedSize_valid, _cached_usedSize);
 		if (!_cached_usedSize_valid) {
 			_cached_usedSize_valid = true;
 			_cached_usedSize =  (uint64_t)(mscfs.clusterCount() - mscfs.freeClusterCount())
 		  		* (uint64_t)mscfs.bytesPerCluster();
 	  	}
 		return _cached_usedSize;
+		#endif
 	}
 	uint64_t totalSize() {
 		return (uint64_t)mscfs.clusterCount() * (uint64_t)mscfs.bytesPerCluster();

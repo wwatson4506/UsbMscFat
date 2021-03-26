@@ -61,5 +61,8 @@ class USBmscInterface : public BlockDeviceInterface {
   virtual uint32_t sectorCount() = 0;
   /** \return USB drive status. */
   virtual uint32_t status() {return 0XFFFFFFFF;}
+
+  virtual bool readSectorsWithCB(uint32_t sector, size_t ns, void (*callback)(uint32_t, uint8_t *), uint32_t token) = 0;
+
 };
 #endif  // USBmscInterface_h
