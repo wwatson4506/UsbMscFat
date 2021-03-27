@@ -41,22 +41,24 @@ uint8_t  sectorBuffer[512];
 uint8_t volName[32];
 
 //----------------------------------------------------------------
-bool mbrDmp(BlockDeviceInterface *blockDev) {
+uint32_t mbrDmp(BlockDeviceInterface *blockDev, uint32_t device_sector_count) {
   MbrSector_t mbr;
+  uint32_t next_free_sector = 8192;  // Some inital value this is default for Win32 on SD...
   // bool valid = true;
   if (!blockDev->readSector(0, (uint8_t*)&mbr)) {
     Serial.print("\nread MBR failed.\n");
     //errorPrint();
-    return false;
+    return (uint32_t)-1;
   }
   Serial.print("\nmsc # Partition Table\n");
   Serial.print("\tpart,boot,bgnCHS[3],type,endCHS[3],start,length\n");
   for (uint8_t ip = 1; ip < 5; ip++) {
     MbrPart_t *pt = &mbr.part[ip - 1];
-    //    if ((pt->boot != 0 && pt->boot != 0X80) ||
-    //        getLe32(pt->relativeSectors) > sdCardCapacity(&m_csd)) {
-    //      valid = false;
-    //    }
+    uint32_t starting_sector = getLe32(pt->relativeSectors);
+    uint32_t total_sector = getLe32(pt->totalSectors);
+    if (starting_sector > next_free_sector) {
+      Serial.printf("\t < unused area starting at: %u length %u >\n", next_free_sector, starting_sector-next_free_sector);
+    }
     switch (pt->type) {
     case 4:
     case 6:
@@ -89,11 +91,16 @@ bool mbrDmp(BlockDeviceInterface *blockDev) {
     for (int i = 0; i < 3; i++ ) {
       Serial.print("0x"); Serial.print(int(pt->endCHS[i]), HEX); Serial.print( ',');
     }
-    uint32_t starting_sector = getLe32(pt->relativeSectors);
     Serial.print(starting_sector, DEC); Serial.print(',');
-    Serial.println(getLe32(pt->totalSectors));
+    Serial.println(total_sector);
+
+    // Lets get the max of start+total
+    if (starting_sector && total_sector)  next_free_sector = starting_sector + total_sector;
   }
-  return true;
+  if ((device_sector_count != (uint32_t)-1) && (next_free_sector < device_sector_count)) {
+    Serial.printf("\t < unused area starting at: %u length %u >\n", next_free_sector, device_sector_count-next_free_sector);
+  } 
+  return next_free_sector;
 }
 //----------------------------------------------------------------
 
@@ -153,9 +160,16 @@ void processMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
     Serial.println("");
     msc.errorPrint(&Serial);
     Serial.printf("initialization drive %u failed.\n", drive_number);
+
+    // see if we can read capacity of this device
+    msSCSICapacity_t mscap;
+    uint8_t status = msDrive.msReadDeviceCapacity(&mscap);
+    Serial.printf("Read Capacity: status: %u Blocks: %u block Size: %u\n", status, mscap.Blocks, mscap.BlockSize);
+    Serial.printf("From object: Blocks: %u Size: %u\n", msDrive.msCapacity.Blocks, msDrive.msCapacity.BlockSize);
     return;
   }
-  mbrDmp( msc.usbDrive() );
+  Serial.printf("Blocks: %u Size: %u\n", msDrive.msCapacity.Blocks, msDrive.msCapacity.BlockSize);
+  mbrDmp( msc.usbDrive(),  msDrive.msCapacity.Blocks);
 
   // lets see if we have any partitions to add to our list...
   for (uint8_t i = 0; i < 4; i++) {
@@ -179,7 +193,7 @@ void processSDDrive()
     Serial.println("initialization failed.\n");
     return;
   }
-  mbrDmp(sd.card() );
+  mbrDmp(sd.card(), (uint32_t)-1 );
   PFsVolume partVol;
 
   for (uint8_t i = 0; i < 4; i++) {
@@ -199,7 +213,7 @@ void ProcessSPISD() {
     Serial.println("initialization failed.\n");
     return;
   }
-  mbrDmp(sdSPI.card() );
+  mbrDmp(sdSPI.card(), (uint32_t)-1 );
   for (uint8_t i = 0; i < 4; i++) {
   if (count_partVols == CNT_PARITIONS) return; // don't overrun
     if (partVols[count_partVols].begin(sdSPI.card(), true, i + 1)) {
@@ -337,6 +351,179 @@ void formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive)
     Serial.println("Cannot format an invalid partition");
 }
 //----------------------------------------------------------------
+//----------------------------------------------------------------
+// Function to handle one MS Drive...
+void InitializeUSBDrive(uint8_t drive_index, uint8_t fat_type)
+{
+  if (!msDrives[drive_index]) {
+    Serial.println("Not a valid USB drive");
+  }
+  PFsVolume partVol;
+
+  for (int ii = 0; ii < count_partVols; ii++) {
+    if (partVols_drive_index[ii] == drive_index) {
+      while (Serial.read() != -1) ;
+      Serial.println("Warning it appears like this drive has valid partitions, continue: Y? ");
+      int ch;
+      while ((ch = Serial.read()) == -1) ;
+      if (ch != 'Y') {
+        Serial.println("Canceled");
+        return;
+      }
+      break;
+    }
+  }
+uint32_t sectorCount = msDrives[drive_index].msCapacity.Blocks;
+#define SECTORS_2GB 4194304   // (2^30 * 2) / 512
+#define SECTORS_32GB 67108864 // (2^30 * 32) / 512
+#define SECTORS_127GB 266338304 // (2^30 * 32) / 512
+  // Serial.printf("Blocks: %u Size: %u\n", msDrives[drive_index].msCapacity.Blocks, msDrives[drive_index].msCapacity.BlockSize);
+  if ((fat_type == FAT_TYPE_EXFAT) && (sectorCount < 0X100000 )) fat_type = 0; // hack to handle later
+  if ((fat_type == FAT_TYPE_FAT16) && (sectorCount >= SECTORS_2GB )) fat_type = 0; // hack to handle later
+  if ((fat_type == FAT_TYPE_FAT32) && (sectorCount >= SECTORS_127GB )) fat_type = 0; // hack to handle later
+  if (fat_type == 0)  {
+    // assume 512 byte blocks here.. 
+    if (sectorCount < SECTORS_2GB) fat_type = FAT_TYPE_FAT16;
+    else if (sectorCount < SECTORS_32GB) fat_type = FAT_TYPE_FAT32;
+    else fat_type = FAT_TYPE_EXFAT;
+  }
+  // lets generate a MBR for this type...
+  memset(sectorBuffer, 0, 512); // lets clear out the area.
+  MbrSector_t* mbr = reinterpret_cast<MbrSector_t*>(sectorBuffer);
+
+  // make Master Boot Record.  Use fake CHS.
+  // fill in common stuff. 
+  mbr->part->beginCHS[0] = 1;
+  mbr->part->beginCHS[1] = 1;
+  mbr->part->beginCHS[2] = 0;
+  mbr->part->type = 7;
+  mbr->part->endCHS[0] = 0XFE;
+  mbr->part->endCHS[1] = 0XFF;
+  mbr->part->endCHS[2] = 0XFF;
+  setLe16(mbr->signature, MBR_SIGNATURE);
+
+
+  if (fat_type == FAT_TYPE_EXFAT) {
+    uint32_t clusterCount;
+    uint32_t clusterHeapOffset;
+    uint32_t fatLength;
+    uint32_t m;
+    uint32_t partitionOffset;
+    uint32_t volumeLength;
+    uint8_t sectorsPerClusterShift;
+    uint8_t vs;
+    // Determine partition layout.
+    for (m = 1, vs = 0; m && sectorCount > m; m <<= 1, vs++) {}
+    sectorsPerClusterShift = vs < 29 ? 8 : (vs - 11)/2;
+    fatLength = 1UL << (vs < 27 ? 13 : (vs + 1)/2);
+    partitionOffset = 2*fatLength;
+    clusterHeapOffset = 2*fatLength;
+    clusterCount = (sectorCount - 4*fatLength) >> sectorsPerClusterShift;
+    volumeLength = clusterHeapOffset + (clusterCount << sectorsPerClusterShift);
+
+    setLe32(mbr->part->relativeSectors, partitionOffset);
+    setLe32(mbr->part->totalSectors, volumeLength);
+  
+  } else {
+    // Fat16 or fat32...
+    uint16_t const BU16 = 128;
+    uint16_t const BU32 = 8192;
+    // Assume 512 byte sectors.
+    const uint16_t BYTES_PER_SECTOR = 512;
+    const uint16_t SECTORS_PER_MB = 0X100000/BYTES_PER_SECTOR;
+    const uint16_t FAT16_ROOT_ENTRY_COUNT = 512;
+    const uint16_t FAT16_ROOT_SECTOR_COUNT = 32*FAT16_ROOT_ENTRY_COUNT/BYTES_PER_SECTOR;
+
+    uint32_t capacityMB = (sectorCount + SECTORS_PER_MB - 1)/SECTORS_PER_MB;
+    uint32_t sectorsPerCluster = 0;
+    uint32_t nc;
+    uint32_t r;
+    uint32_t dataStart;
+    uint32_t fatSize;
+    uint32_t reservedSectorCount;
+    uint32_t relativeSectors;
+    uint32_t totalSectors;
+    uint8_t partType;
+
+    if (capacityMB <= 6) {
+      Serial.print("Card is too small.\r\n");
+      return;
+    } else if (capacityMB <= 16) {
+      sectorsPerCluster = 2;
+    } else if (capacityMB <= 32) {
+      sectorsPerCluster = 4;
+    } else if (capacityMB <= 64) {
+      sectorsPerCluster = 8;
+    } else if (capacityMB <= 128) {
+      sectorsPerCluster = 16;
+    } else if (capacityMB <= 1024) {
+      sectorsPerCluster = 32;
+    } else if (capacityMB <= 32768) {
+      sectorsPerCluster = 64;
+    } else {
+      // SDXC cards
+      sectorsPerCluster = 128;
+    }
+
+    // Fat16
+    if (fat_type == FAT_TYPE_FAT16) {
+  
+      for (dataStart = 2*BU16; ; dataStart += BU16) {
+        nc = (sectorCount - dataStart)/sectorsPerCluster;
+        fatSize = (nc + 2 + (BYTES_PER_SECTOR/2) - 1)/(BYTES_PER_SECTOR/2);
+        r = BU16 + 1 + 2*fatSize + FAT16_ROOT_SECTOR_COUNT;
+        if (dataStart >= r) {
+          relativeSectors = dataStart - r + BU16;
+          break;
+        }
+      }
+      reservedSectorCount = 1;
+      totalSectors = nc*sectorsPerCluster
+                       + 2*fatSize + reservedSectorCount + 32;
+      if (totalSectors < 65536) {
+        partType = 0X04;
+      } else {
+        partType = 0X06;
+      }
+    } else {
+      // fat32...
+      relativeSectors = BU32;
+      for (dataStart = 2*BU32; ; dataStart += BU32) {
+        nc = (sectorCount - dataStart)/sectorsPerCluster;
+        fatSize = (nc + 2 + (BYTES_PER_SECTOR/4) - 1)/(BYTES_PER_SECTOR/4);
+        r = relativeSectors + 9 + 2*fatSize;
+        if (dataStart >= r) {
+          break;
+        }
+      }
+      reservedSectorCount = dataStart - relativeSectors - 2*fatSize;
+      totalSectors = nc*sectorsPerCluster + dataStart - relativeSectors;
+      // type depends on address of end sector
+      // max CHS has lba = 16450560 = 1024*255*63
+      if ((relativeSectors + totalSectors) <= 16450560) {
+        // FAT32 with CHS and LBA
+        partType = 0X0B;
+      } else {
+        // FAT32 with only LBA
+        partType = 0X0C;
+      }
+    }
+    mbr->part->type = partType;
+    setLe32(mbr->part->relativeSectors, relativeSectors);
+    setLe32(mbr->part->totalSectors, totalSectors);
+  }
+
+  // Bugbug:: we assume that the msc is already set for this...
+  USBMSCDevice* dev = (USBMSCDevice*)msc[drive_index].usbDrive();
+  dev->writeSector(0, sectorBuffer);
+
+  // and lets setup a partition to use this area...
+  partVol.begin(dev, 1); // blind faith it worked
+    
+  // now lets try calling formatter
+  formatter(partVol, fat_type, false); 
+ 
+}
 
 void setup() {
 #if 0 // easy test to check HardFault Detection response
@@ -420,6 +607,7 @@ void loop() {
         Serial.println("  d <partition> - to dump first sectors");
         Serial.println("  p <partition> - print Partition info");
         Serial.println("  l <partition> - to do ls command on that partition");
+        Serial.println("  R <USB Device> - Setup initial MBR and format disk *sledgehammer*");
         Serial.println("  c -  toggle on/off format show changed data");
         break;      
       case 'f':
@@ -475,6 +663,15 @@ void loop() {
 
         Serial.printf("\n **** List fillScreen partition %d ****\n", partVol_index);
         partVols[partVol_index].ls();
+        break;
+      case 'R':
+        Serial.printf("\n **** Try Sledgehammer on USB Drive %d ****\n", partVol_index);
+        switch(ch) {
+          case '1': fat_type = FAT_TYPE_FAT16; break;
+          case '3': fat_type = FAT_TYPE_FAT32; break;
+          case 'e': fat_type = FAT_TYPE_EXFAT; break;
+        }
+        InitializeUSBDrive(partVol_index, fat_type); 
         break;
 
     }
