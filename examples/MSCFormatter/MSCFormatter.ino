@@ -24,12 +24,12 @@ msController msDrives[CNT_MSDRIVES](myusb);
 UsbFs msc[CNT_MSDRIVES];
 bool g_exfat_dump_changed_sectors = true;
 
-#define SD_DRIVE 1
-#define MS_DRIVE 2
 #define SD_CONFIG SdioConfig(FIFO_SDIO)
 #define SD_SPICONFIG SdioConfig(FIFO_SDIO)
 
 
+#define LOGICAL_DRIVE_SDIO 10
+#define LOGICAL_DRIVE_SDSPI 11
 SdFs sd;
 SdFs sdSPI;
 #define SD_SPI_CS 10
@@ -200,7 +200,7 @@ void processSDDrive()
   if (count_partVols == CNT_PARITIONS) return; // don't overrun
     if (partVols[count_partVols].begin(sd.card(), true, i + 1)) {
       Serial.printf("drive s Partition %u valid\n", i);
-      partVols_drive_index[count_partVols] = 0xff;
+      partVols_drive_index[count_partVols] = LOGICAL_DRIVE_SDIO;
       count_partVols++;
     }
   }
@@ -217,7 +217,7 @@ void ProcessSPISD() {
   for (uint8_t i = 0; i < 4; i++) {
   if (count_partVols == CNT_PARITIONS) return; // don't overrun
     if (partVols[count_partVols].begin(sdSPI.card(), true, i + 1)) {
-      partVols_drive_index[count_partVols] = 0xfe;
+      partVols_drive_index[count_partVols] = LOGICAL_DRIVE_SDSPI;
       Serial.printf("drive g Partition %u valid\n", i);
       count_partVols++;
     }
@@ -229,7 +229,7 @@ void ShowPartitionList() {
   Serial.println("\n***** Partition List *****");
   char volName[32];
   for (uint8_t i = 0; i < count_partVols; i++)  {
-    Serial.printf("%d(%x:%x):>> ", i, partVols_drive_index[i], partVols[i].part());
+    Serial.printf("%d(%u:%u):>> ", i, partVols_drive_index[i], partVols[i].part());
     switch (partVols[i].fatType())
     {
     case FAT_TYPE_FAT12: Serial.printf("Fat12: "); break;
@@ -393,10 +393,7 @@ void CreatePartition(uint8_t drive_index, uint32_t starting_sector, uint32_t cou
 // Function to handle one MS Drive...
 void InitializeUSBDrive(uint8_t drive_index, uint8_t fat_type)
 {
-  if (!msDrives[drive_index]) {
-    Serial.println("Not a valid USB drive");
-    return;
-  }
+  BlockDeviceInterface *dev = nullptr;
   PFsVolume partVol;
 
   for (int ii = 0; ii < count_partVols; ii++) {
@@ -412,7 +409,21 @@ void InitializeUSBDrive(uint8_t drive_index, uint8_t fat_type)
       break;
     }
   }
-uint32_t sectorCount = msDrives[drive_index].msCapacity.Blocks;
+
+  if (drive_index == LOGICAL_DRIVE_SDIO) {
+    dev = sd.card();
+  } else if (drive_index == LOGICAL_DRIVE_SDSPI) {
+    dev = sdSPI.card();
+  } else {
+    if (!msDrives[drive_index]) {
+      Serial.println("Not a valid USB drive");
+      return;
+    }
+    dev = (USBMSCDevice*)msc[drive_index].usbDrive();
+  }
+
+  uint32_t sectorCount = dev->sectorCount();
+  
   // Serial.printf("Blocks: %u Size: %u\n", msDrives[drive_index].msCapacity.Blocks, msDrives[drive_index].msCapacity.BlockSize);
   if ((fat_type == FAT_TYPE_EXFAT) && (sectorCount < 0X100000 )) fat_type = 0; // hack to handle later
   if ((fat_type == FAT_TYPE_FAT16) && (sectorCount >= SECTORS_2GB )) fat_type = 0; // hack to handle later
@@ -550,7 +561,6 @@ uint32_t sectorCount = msDrives[drive_index].msCapacity.Blocks;
   }
 
   // Bugbug:: we assume that the msc is already set for this...
-  USBMSCDevice* dev = (USBMSCDevice*)msc[drive_index].usbDrive();
   dev->writeSector(0, sectorBuffer);
 
   // and lets setup a partition to use this area...
@@ -699,36 +709,38 @@ void loop() {
   uint8_t partVol_index = (uint8_t)CommandLineReadNextNumber(ch, 0);
   while (ch == ' ') ch = Serial.read();
   uint8_t fat_type = 0;
-  if (partVol_index < count_partVols) {
-    switch(commmand) {
-      default:
-        ShowCommandList();
-        break;      
-      case 'f':
-        // if there is an optional parameter try it... 
-        switch(ch) {
-          case '1': fat_type = FAT_TYPE_FAT16; break;
-          case '3': fat_type = FAT_TYPE_FAT32; break;
-          case 'e': fat_type = FAT_TYPE_EXFAT; break;
-        }
+  switch(commmand) {
+    default:
+      ShowCommandList();
+      break;      
+    case 'f':
+      // if there is an optional parameter try it... 
+      switch(ch) {
+        case '1': fat_type = FAT_TYPE_FAT16; break;
+        case '3': fat_type = FAT_TYPE_FAT32; break;
+        case 'e': fat_type = FAT_TYPE_EXFAT; break;
+      }
 
-        Serial.printf("\n **** Start format partition %d ****\n", partVol_index);
+      Serial.printf("\n **** Start format partition %d ****\n", partVol_index);
+      if (partVol_index < count_partVols) 
         formatter(partVols[partVol_index], fat_type, false); 
-        break;
+      break;
 
-      case 'd':
-        Serial.printf("\n **** Start dump partition %d ****\n", partVol_index);
+    case 'd':
+      Serial.printf("\n **** Start dump partition %d ****\n", partVol_index);
+      if (partVol_index < count_partVols) 
         formatter(partVols[partVol_index], 0, true); 
-        break;
-      case 'p':
-        while (partVol_index < count_partVols) {
-          Serial.printf("\n **** print partition info %d ****\n", partVol_index);
-          print_partion_info(partVols[partVol_index]); 
-          partVol_index = (uint8_t)CommandLineReadNextNumber(ch, 0xff);
-        }
-        break;
-      case 'v':
-        {
+      break;
+    case 'p':
+      while (partVol_index < count_partVols) {
+        Serial.printf("\n **** print partition info %d ****\n", partVol_index);
+        print_partion_info(partVols[partVol_index]); 
+        partVol_index = (uint8_t)CommandLineReadNextNumber(ch, 0xff);
+      }
+      break;
+    case 'v':
+      {
+      if (partVol_index < count_partVols) {
           char new_volume_name[30];
           int ii = 0;
           while (ch > ' ') {
@@ -741,52 +753,53 @@ void loop() {
           if (partVols[partVol_index].setVolumeLabel(new_volume_name)) Serial.println("*** Succeeded ***");
           else Serial.println("*** failed ***");
         }
-        break;
-      case 'c': 
-        g_exfat_dump_changed_sectors = !g_exfat_dump_changed_sectors; 
-        break;
-      case 'l':
+      }
+      break;
+    case 'c': 
+      g_exfat_dump_changed_sectors = !g_exfat_dump_changed_sectors; 
+      break;
+    case 'l':
 
-        Serial.printf("\n **** List fillScreen partition %d ****\n", partVol_index);
+      Serial.printf("\n **** List fillScreen partition %d ****\n", partVol_index);
+      if (partVol_index < count_partVols) 
         partVols[partVol_index].ls();
-        break;
-      case 'N':
-        {
-        // do the work there...
-          uint32_t starting_sector = CommandLineReadNextNumber(ch, 0);
-          uint32_t count_of_sectors = CommandLineReadNextNumber(ch, 0);
-          Serial.printf("\n *** Create a NEW partition Drive %u Starting at: %u Count: %u ***\n", partVol_index, starting_sector, count_of_sectors);
-          CreatePartition(partVol_index, starting_sector, count_of_sectors);
-        }
+      break;
+    case 'N':
+      {
+      // do the work there...
+        uint32_t starting_sector = CommandLineReadNextNumber(ch, 0);
+        uint32_t count_of_sectors = CommandLineReadNextNumber(ch, 0);
+        Serial.printf("\n *** Create a NEW partition Drive %u Starting at: %u Count: %u ***\n", partVol_index, starting_sector, count_of_sectors);
+        CreatePartition(partVol_index, starting_sector, count_of_sectors);
+      }
 
-        break;  
-      case 'R':
-        Serial.printf("\n **** Try Sledgehammer on USB Drive %d ****\n", partVol_index);
-        switch(ch) {
-          case '1': fat_type = FAT_TYPE_FAT16; break;
-          case '3': fat_type = FAT_TYPE_FAT32; break;
-          case 'e': fat_type = FAT_TYPE_EXFAT; break;
-        }
-        InitializeUSBDrive(partVol_index, fat_type); 
-        break;
-      case 'X':
-        {
-          if (ch == 'd') {
-            // User is using the devide version... 
-            ch = Serial.read();             
-            uint8_t usb_device_index = (uint8_t)CommandLineReadNextNumber(ch, 0);
-            if (usb_device_index < CNT_MSDRIVES) DeletePartition(msc[usb_device_index].usbDrive(), partVol_index);
-            else Serial.println("Drive index is out of range");
+      break;  
+    case 'R':
+      Serial.printf("\n **** Try Sledgehammer on USB Drive %d ****\n", partVol_index);
+      switch(ch) {
+        case '1': fat_type = FAT_TYPE_FAT16; break;
+        case '3': fat_type = FAT_TYPE_FAT32; break;
+        case 'e': fat_type = FAT_TYPE_EXFAT; break;
+      }
+      InitializeUSBDrive(partVol_index, fat_type); 
+      break;
+    case 'X':
+      {
+        if (ch == 'd') {
+          // User is using the devide version... 
+          ch = Serial.read();             
+          uint8_t usb_device_index = (uint8_t)CommandLineReadNextNumber(ch, 0);
+          if (usb_device_index < CNT_MSDRIVES) DeletePartition(msc[usb_device_index].usbDrive(), partVol_index);
+          else Serial.println("Drive index is out of range");
+        } else {
+          if (partVol_index < count_partVols) {
+            DeletePartition(partVols[partVol_index].blockDevice(), partVols[partVol_index].part());
           } else {
-            if (partVol_index < count_partVols) {
-              DeletePartition(partVols[partVol_index].blockDevice(), partVols[partVol_index].part());
-            } else {
-              Serial.println("Partition index is out of range");
-            }
-
+            Serial.println("Partition index is out of range");
           }
+
         }
-    }
+      }
   }
   while (Serial.read() != -1);
 
