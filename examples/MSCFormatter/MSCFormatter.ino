@@ -325,7 +325,7 @@ void formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive)
 
     } else {  
       if (fat_type != FAT_TYPE_EXFAT) {
-        FatFormatter.format(partVol, sectorBuffer, &Serial);
+        FatFormatter.format(partVol, fat_type, sectorBuffer, &Serial);
       } else {
         Serial.println("ExFatFormatter - WIP");
         ExFatFormatter.format(partVol, sectorBuffer, &Serial);
@@ -350,13 +350,52 @@ void formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive)
   else
     Serial.println("Cannot format an invalid partition");
 }
+
+
 //----------------------------------------------------------------
+#define SECTORS_2GB 4194304   // (2^30 * 2) / 512
+#define SECTORS_32GB 67108864 // (2^30 * 32) / 512
+#define SECTORS_127GB 266338304 // (2^30 * 32) / 512
+
+void CreatePartition(uint8_t drive_index, uint32_t starting_sector, uint32_t count_of_sectors) 
+{
+    // What validation should we do here?  Could do a little like if 0 for count 
+    // find out how big the drive is...
+  if (!msDrives[drive_index]) {
+    Serial.println("Not a valid USB drive");
+    return;
+  }
+  if (count_of_sectors == 0) count_of_sectors = msDrives[drive_index].msCapacity.Blocks - starting_sector;
+  if ((starting_sector == 0)  && (count_of_sectors == msDrives[drive_index].msCapacity.Blocks)) {
+    // doing the whole disks...
+    for (int ii = 0; ii < count_partVols; ii++) {
+      if (partVols_drive_index[ii] == drive_index) {
+        while (Serial.read() != -1) ;
+        Serial.println("Warning it appears like this drive has valid partitions, continue: Y? ");
+        int ch;
+        while ((ch = Serial.read()) == -1) ;
+        if (ch != 'Y') {
+          Serial.println("Canceled");
+          return;
+        }
+        break;
+      }
+    }
+  }
+
+  // right now we will only call the fat formater. 
+  uint8_t fat_type = (count_of_sectors < SECTORS_2GB)? FAT_TYPE_FAT16 : FAT_TYPE_FAT32;
+  FatFormatter.createPartition(msc[drive_index].usbDrive(), fat_type, starting_sector, count_of_sectors, sectorBuffer, &Serial);
+
+}
+
 //----------------------------------------------------------------
 // Function to handle one MS Drive...
 void InitializeUSBDrive(uint8_t drive_index, uint8_t fat_type)
 {
   if (!msDrives[drive_index]) {
     Serial.println("Not a valid USB drive");
+    return;
   }
   PFsVolume partVol;
 
@@ -374,9 +413,6 @@ void InitializeUSBDrive(uint8_t drive_index, uint8_t fat_type)
     }
   }
 uint32_t sectorCount = msDrives[drive_index].msCapacity.Blocks;
-#define SECTORS_2GB 4194304   // (2^30 * 2) / 512
-#define SECTORS_32GB 67108864 // (2^30 * 32) / 512
-#define SECTORS_127GB 266338304 // (2^30 * 32) / 512
   // Serial.printf("Blocks: %u Size: %u\n", msDrives[drive_index].msCapacity.Blocks, msDrives[drive_index].msCapacity.BlockSize);
   if ((fat_type == FAT_TYPE_EXFAT) && (sectorCount < 0X100000 )) fat_type = 0; // hack to handle later
   if ((fat_type == FAT_TYPE_FAT16) && (sectorCount >= SECTORS_2GB )) fat_type = 0; // hack to handle later
@@ -525,6 +561,46 @@ uint32_t sectorCount = msDrives[drive_index].msCapacity.Blocks;
  
 }
 
+//=============================================================================
+bool DeletePartition(BlockDeviceInterface *blockDev, uint8_t part) 
+{
+
+  MbrSector_t* mbr = reinterpret_cast<MbrSector_t*>(sectorBuffer);
+  if (!blockDev->readSector(0, sectorBuffer)) {
+    Serial.print("\nERROR: read MBR failed.\n");
+    return false;
+  }
+
+  if ((part < 1) || (part > 4)) {
+    Serial.printf("ERROR: Invalid Partition: %u, only 1-4 are valid\n", part);
+    return false;
+  }
+
+  Serial.println("Warning this will delete the partition are you sure, continue: Y? ");
+  int ch;
+  while ((ch = Serial.read()) == -1) ;
+  if (ch != 'Y') {
+    Serial.println("Canceled");
+    return false;
+  }
+  Serial.println("MBR Before");
+  dump_hexbytes(sectorBuffer, 512);
+
+  // Copy in the higher numer partitions; 
+  for (--part; part < 3; part++)  memcpy(&mbr->part[part], &mbr->part[part+1], sizeof(MbrPart_t));
+  // clear out the last one
+  memset(&mbr->part[part], 0, sizeof(MbrPart_t));
+
+  Serial.println("MBR After");
+  dump_hexbytes(sectorBuffer, 512);
+
+  return blockDev->writeSector(0, sectorBuffer);
+}
+
+
+
+
+//=============================================================================
 void setup() {
 #if 0 // easy test to check HardFault Detection response
   int *pp = 0;
@@ -534,7 +610,7 @@ void setup() {
   pinMode(1, OUTPUT);
   pinMode(2, OUTPUT);
 
-  // allow for SD on SPI...
+  // allow for SD on SPI
   SPI.begin();
   #if defined(SD_SPI_CS)
   pinMode(SD_SPI_CS, OUTPUT);
@@ -555,10 +631,40 @@ void setup() {
          "Cards larger than 2 GiB and up to 32 GiB will be formatted\n"
          "FAT32. Cards larger than 32 GiB will be formatted exFAT.\n"
          "\n");
+    ShowCommandList();
 
 }
 
+//=============================================================================
+void ShowCommandList() {
+  Serial.println("Commands:");
+  Serial.println("  f <partition> [16|32|ex] - to format");
+  Serial.println("  v <partition> <label> - to change volume label");
+  Serial.println("  d <partition> - to dump first sectors");
+  Serial.println("  p <partition> - print Partition info");
+  Serial.println("  l <partition> - to do ls command on that partition");
+  Serial.println("  c -  toggle on/off format show changed data");  
+  Serial.println("  *** Danger Zone ***");  
+  Serial.println("  N <USB Device> start_addr <length> - Add a new partition to a disk");
+  Serial.println("  R <USB Device> - Setup initial MBR and format disk *sledgehammer*");
+  Serial.println("  X <partition> [d <usb device> - Delete a partition");
+}
 
+//=============================================================================
+uint32_t CommandLineReadNextNumber(int &ch, uint32_t default_num) {
+  while (ch == ' ') ch = Serial.read();
+  if ((ch < '0') || (ch > '9')) return default_num;
+
+  uint32_t return_value = 0;
+  while ((ch >= '0') && (ch <= '9')) {
+    return_value = return_value * 10 + ch - '0';
+    ch = Serial.read(); 
+  }
+  return return_value;  
+}
+
+
+//=============================================================================
 void loop() {
 
   myusb.Task();
@@ -590,25 +696,13 @@ void loop() {
   uint8_t commmand = Serial.read();
 
   int ch = Serial.read();
-  while (ch == ' ') ch = Serial.read();
-  uint8_t partVol_index = 0;
-  while ((ch >= '0') && (ch <= '9')) {
-    partVol_index = partVol_index * 10 + ch - '0';
-    ch = Serial.read(); 
-  }
+  uint8_t partVol_index = (uint8_t)CommandLineReadNextNumber(ch, 0);
   while (ch == ' ') ch = Serial.read();
   uint8_t fat_type = 0;
   if (partVol_index < count_partVols) {
     switch(commmand) {
       default:
-        Serial.println("Commands:");
-        Serial.println("  f <partition> [16|32|ex] - to format");
-        Serial.println("  v <partition> <label> - to change volume label");
-        Serial.println("  d <partition> - to dump first sectors");
-        Serial.println("  p <partition> - print Partition info");
-        Serial.println("  l <partition> - to do ls command on that partition");
-        Serial.println("  R <USB Device> - Setup initial MBR and format disk *sledgehammer*");
-        Serial.println("  c -  toggle on/off format show changed data");
+        ShowCommandList();
         break;      
       case 'f':
         // if there is an optional parameter try it... 
@@ -630,15 +724,7 @@ void loop() {
         while (partVol_index < count_partVols) {
           Serial.printf("\n **** print partition info %d ****\n", partVol_index);
           print_partion_info(partVols[partVol_index]); 
-          if ((ch >= '0') && (ch <= '9')) {
-            partVol_index = 0;
-            while ((ch >= '0') && (ch <= '9')) {
-              partVol_index = partVol_index * 10 + ch - '0';
-              ch = Serial.read(); 
-            }
-            while (ch == ' ') ch = Serial.read();
-          } else 
-            partVol_index = 0xff;
+          partVol_index = (uint8_t)CommandLineReadNextNumber(ch, 0xff);
         }
         break;
       case 'v':
@@ -664,6 +750,16 @@ void loop() {
         Serial.printf("\n **** List fillScreen partition %d ****\n", partVol_index);
         partVols[partVol_index].ls();
         break;
+      case 'N':
+        {
+        // do the work there...
+          uint32_t starting_sector = CommandLineReadNextNumber(ch, 0);
+          uint32_t count_of_sectors = CommandLineReadNextNumber(ch, 0);
+          Serial.printf("\n *** Create a NEW partition Drive %u Starting at: %u Count: %u ***\n", partVol_index, starting_sector, count_of_sectors);
+          CreatePartition(partVol_index, starting_sector, count_of_sectors);
+        }
+
+        break;  
       case 'R':
         Serial.printf("\n **** Try Sledgehammer on USB Drive %d ****\n", partVol_index);
         switch(ch) {
@@ -673,7 +769,23 @@ void loop() {
         }
         InitializeUSBDrive(partVol_index, fat_type); 
         break;
+      case 'X':
+        {
+          if (ch == 'd') {
+            // User is using the devide version... 
+            ch = Serial.read();             
+            uint8_t usb_device_index = (uint8_t)CommandLineReadNextNumber(ch, 0);
+            if (usb_device_index < CNT_MSDRIVES) DeletePartition(msc[usb_device_index].usbDrive(), partVol_index);
+            else Serial.println("Drive index is out of range");
+          } else {
+            if (partVol_index < count_partVols) {
+              DeletePartition(partVols[partVol_index].blockDevice(), partVols[partVol_index].part());
+            } else {
+              Serial.println("Partition index is out of range");
+            }
 
+          }
+        }
     }
   }
   while (Serial.read() != -1);

@@ -44,7 +44,9 @@ class PFsFatFormatter {
    *
    * \return true for success or false for failure.
    */
-  bool format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr);
+  bool format(PFsVolume &partVol, uint8_t fat_type, uint8_t* secBuf, print_t* pr);
+  bool createPartition(BlockDevice* dev, uint8_t fat_type, uint32_t startSector, uint32_t sectorCount, uint8_t* secBuf, print_t* pr);
+  void dump_hexbytes(const void *ptr, int len);
 
  private:
   bool initFatDir(uint8_t fatType, uint32_t sectorCount);
@@ -52,6 +54,8 @@ class PFsFatFormatter {
   bool makeFat16();
   bool makeFat32();
   bool writeMbr();
+  bool writeNewMbr();
+  uint8_t addPartitionToMbr(uint32_t startSector, uint32_t sectorCount);  
   void lbaToMbrChs(uint8_t* chs, uint32_t capacityMB, uint32_t lba);
   uint32_t m_capacityMB;
   uint32_t m_dataStart;
@@ -69,5 +73,6 @@ class PFsFatFormatter {
   uint8_t m_part;
   uint32_t m_part_relativeSectors;
   char volName[32];
+  uint8_t newPart = 0;
 };
 #endif  // FatFormatter_h
