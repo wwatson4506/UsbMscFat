@@ -35,6 +35,7 @@ SdFs sdSPI;
 #define SD_SPI_CS 10
 #define SPI_SPEED SD_SCK_MHZ(33)  // adjust to sd card 
 
+PFsLib pfsLIB;
 PFsFatFormatter FatFormatter;
 PFsExFatFormatter ExFatFormatter;
 uint8_t  sectorBuffer[512];
@@ -365,7 +366,8 @@ void CreatePartition(uint8_t drive_index, uint32_t starting_sector, uint32_t cou
     Serial.println("Not a valid USB drive");
     return;
   }
-  FatFormatter.createPartition(msc[drive_index].usbDrive(), 0, starting_sector, count_of_sectors, sectorBuffer, &Serial);
+  
+  FatFormatter.createFatPartition(msc[drive_index].usbDrive(), 0, starting_sector, count_of_sectors, sectorBuffer, &Serial);
 
 }
 
@@ -402,153 +404,11 @@ void InitializeBlockDevice(uint8_t drive_index, uint8_t fat_type)
     dev = (USBMSCDevice*)msc[drive_index].usbDrive();
   }
 
-  uint32_t sectorCount = dev->sectorCount();
   
-  // Serial.printf("Blocks: %u Size: %u\n", msDrives[drive_index].msCapacity.Blocks, msDrives[drive_index].msCapacity.BlockSize);
-  if ((fat_type == FAT_TYPE_EXFAT) && (sectorCount < 0X100000 )) fat_type = 0; // hack to handle later
-  if ((fat_type == FAT_TYPE_FAT16) && (sectorCount >= SECTORS_2GB )) fat_type = 0; // hack to handle later
-  if ((fat_type == FAT_TYPE_FAT32) && (sectorCount >= SECTORS_127GB )) fat_type = 0; // hack to handle later
-  if (fat_type == 0)  {
-    // assume 512 byte blocks here.. 
-    if (sectorCount < SECTORS_2GB) fat_type = FAT_TYPE_FAT16;
-    else if (sectorCount < SECTORS_32GB) fat_type = FAT_TYPE_FAT32;
-    else fat_type = FAT_TYPE_EXFAT;
-  }
-  // lets generate a MBR for this type...
-  memset(sectorBuffer, 0, 512); // lets clear out the area.
-  MbrSector_t* mbr = reinterpret_cast<MbrSector_t*>(sectorBuffer);
 
-  // make Master Boot Record.  Use fake CHS.
-  // fill in common stuff. 
-  mbr->part->beginCHS[0] = 1;
-  mbr->part->beginCHS[1] = 1;
-  mbr->part->beginCHS[2] = 0;
-  mbr->part->type = 7;
-  mbr->part->endCHS[0] = 0XFE;
-  mbr->part->endCHS[1] = 0XFF;
-  mbr->part->endCHS[2] = 0XFF;
-  setLe16(mbr->signature, MBR_SIGNATURE);
+  pfsLIB.InitializeDrive(dev, fat_type, &Serial);
 
 
-  if (fat_type == FAT_TYPE_EXFAT) {
-    uint32_t clusterCount;
-    uint32_t clusterHeapOffset;
-    uint32_t fatLength;
-    uint32_t m;
-    uint32_t partitionOffset;
-    uint32_t volumeLength;
-    uint8_t sectorsPerClusterShift;
-    uint8_t vs;
-    // Determine partition layout.
-    for (m = 1, vs = 0; m && sectorCount > m; m <<= 1, vs++) {}
-    sectorsPerClusterShift = vs < 29 ? 8 : (vs - 11)/2;
-    fatLength = 1UL << (vs < 27 ? 13 : (vs + 1)/2);
-    partitionOffset = 2*fatLength;
-    clusterHeapOffset = 2*fatLength;
-    clusterCount = (sectorCount - 4*fatLength) >> sectorsPerClusterShift;
-    volumeLength = clusterHeapOffset + (clusterCount << sectorsPerClusterShift);
-
-    setLe32(mbr->part->relativeSectors, partitionOffset);
-    setLe32(mbr->part->totalSectors, volumeLength);
-  
-  } else {
-    // Fat16 or fat32...
-    uint16_t const BU16 = 128;
-    uint16_t const BU32 = 8192;
-    // Assume 512 byte sectors.
-    const uint16_t BYTES_PER_SECTOR = 512;
-    const uint16_t SECTORS_PER_MB = 0X100000/BYTES_PER_SECTOR;
-    const uint16_t FAT16_ROOT_ENTRY_COUNT = 512;
-    const uint16_t FAT16_ROOT_SECTOR_COUNT = 32*FAT16_ROOT_ENTRY_COUNT/BYTES_PER_SECTOR;
-
-    uint32_t capacityMB = (sectorCount + SECTORS_PER_MB - 1)/SECTORS_PER_MB;
-    uint32_t sectorsPerCluster = 0;
-    uint32_t nc;
-    uint32_t r;
-    uint32_t dataStart;
-    uint32_t fatSize;
-    uint32_t reservedSectorCount;
-    uint32_t relativeSectors;
-    uint32_t totalSectors;
-    uint8_t partType;
-
-    if (capacityMB <= 6) {
-      Serial.print("Card is too small.\r\n");
-      return;
-    } else if (capacityMB <= 16) {
-      sectorsPerCluster = 2;
-    } else if (capacityMB <= 32) {
-      sectorsPerCluster = 4;
-    } else if (capacityMB <= 64) {
-      sectorsPerCluster = 8;
-    } else if (capacityMB <= 128) {
-      sectorsPerCluster = 16;
-    } else if (capacityMB <= 1024) {
-      sectorsPerCluster = 32;
-    } else if (capacityMB <= 32768) {
-      sectorsPerCluster = 64;
-    } else {
-      // SDXC cards
-      sectorsPerCluster = 128;
-    }
-
-    // Fat16
-    if (fat_type == FAT_TYPE_FAT16) {
-  
-      for (dataStart = 2*BU16; ; dataStart += BU16) {
-        nc = (sectorCount - dataStart)/sectorsPerCluster;
-        fatSize = (nc + 2 + (BYTES_PER_SECTOR/2) - 1)/(BYTES_PER_SECTOR/2);
-        r = BU16 + 1 + 2*fatSize + FAT16_ROOT_SECTOR_COUNT;
-        if (dataStart >= r) {
-          relativeSectors = dataStart - r + BU16;
-          break;
-        }
-      }
-      reservedSectorCount = 1;
-      totalSectors = nc*sectorsPerCluster
-                       + 2*fatSize + reservedSectorCount + 32;
-      if (totalSectors < 65536) {
-        partType = 0X04;
-      } else {
-        partType = 0X06;
-      }
-    } else {
-      // fat32...
-      relativeSectors = BU32;
-      for (dataStart = 2*BU32; ; dataStart += BU32) {
-        nc = (sectorCount - dataStart)/sectorsPerCluster;
-        fatSize = (nc + 2 + (BYTES_PER_SECTOR/4) - 1)/(BYTES_PER_SECTOR/4);
-        r = relativeSectors + 9 + 2*fatSize;
-        if (dataStart >= r) {
-          break;
-        }
-      }
-      reservedSectorCount = dataStart - relativeSectors - 2*fatSize;
-      totalSectors = nc*sectorsPerCluster + dataStart - relativeSectors;
-      // type depends on address of end sector
-      // max CHS has lba = 16450560 = 1024*255*63
-      if ((relativeSectors + totalSectors) <= 16450560) {
-        // FAT32 with CHS and LBA
-        partType = 0X0B;
-      } else {
-        // FAT32 with only LBA
-        partType = 0X0C;
-      }
-    }
-    mbr->part->type = partType;
-    setLe32(mbr->part->relativeSectors, relativeSectors);
-    setLe32(mbr->part->totalSectors, totalSectors);
-  }
-
-  // Bugbug:: we assume that the msc is already set for this...
-  dev->writeSector(0, sectorBuffer);
-
-  // and lets setup a partition to use this area...
-  partVol.begin(dev, 1); // blind faith it worked
-    
-  // now lets try calling formatter
-  formatter(partVol, fat_type, false); 
- 
 }
 
 //=============================================================================
@@ -769,11 +629,11 @@ void loop() {
           // User is using the devide version... 
           ch = Serial.read();             
           uint8_t usb_device_index = (uint8_t)CommandLineReadNextNumber(ch, 0);
-          if (usb_device_index < CNT_MSDRIVES) DeletePartition(msc[usb_device_index].usbDrive(), partVol_index);
+          if (usb_device_index < CNT_MSDRIVES) pfsLIB.deletePartition(msc[usb_device_index].usbDrive(), partVol_index, &Serial);
           else Serial.println("Drive index is out of range");
         } else {
           if (partVol_index < count_partVols) {
-            DeletePartition(partVols[partVol_index].blockDevice(), partVols[partVol_index].part());
+            pfsLIB.deletePartition(partVols[partVol_index].blockDevice(), partVols[partVol_index].part(), &Serial);
           } else {
             Serial.println("Partition index is out of range");
           }

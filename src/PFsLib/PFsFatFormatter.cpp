@@ -22,10 +22,16 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
+#include "PFsLib.h"
 #include "PFsFatFormatter.h"
 
 //Set to 0 for debug info
 #define DBG_Print	1
+#if defined(DBG_Print)
+#define DBGPrintf Serial.printf
+#else
+void inline DBGPrintf(...) {};
+#endif
 
 // Set nonzero to use calculated CHS in MBR.  Should not be required.
 #define USE_LBA_TO_CHS 1
@@ -59,7 +65,7 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t fat_type, uint8_t* secB
   m_part = partVol.part()-1;  // convert to 0 biased. 
     
   if (!m_dev->readSector(0, (uint8_t*)&mbr)) {
-    Serial.print("\nread MBR failed.\n");
+    writeMsg("\nread MBR failed.\n");
     //errorPrint();
     return false;
   }
@@ -70,22 +76,20 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t fat_type, uint8_t* secB
   m_part_relativeSectors = getLe32(pt->relativeSectors);
 
   bool has_volume_label = partVol.getVolumeLabel(volName, sizeof(volName));
-#if defined(DBG_Print)
-  Serial.println(m_part);
 
   if (has_volume_label) {
-	Serial.printf("Volume name:(%s)", volName);
+	DBGPrintf("Volume name:(%s)", volName);
   }
-  Serial.println("\nPFsFatFormatter::format................");
-  Serial.printf("Sector Count: %d, Sectors/MB: %d\n", m_sectorCount, SECTORS_PER_MB);
-  Serial.printf("Partition Capacity (MB): %d\n", m_capacityMB);
-  Serial.printf("Fat Type: %d\n", partVol.fatType());
-  Serial.printf("    m_dataStart:%u\n", partVol.dataStartSector());
-  Serial.printf("    m_sectorsPerCluster:%u\n",partVol.sectorsPerCluster());
-  Serial.printf("    m_relativeSectors:%u\n", m_part_relativeSectors);
+  DBGPrintf("\nPFsFatFormatter::format................");
+  DBGPrintf("Sector Count: %d, Sectors/MB: %d\n", m_sectorCount, SECTORS_PER_MB);
+  DBGPrintf("Partition Capacity (MB): %d\n", m_capacityMB);
+  DBGPrintf("Fat Type: %d\n", partVol.fatType());
+  DBGPrintf("    m_dataStart:%u\n", partVol.dataStartSector());
+  DBGPrintf("    m_sectorsPerCluster:%u\n",partVol.sectorsPerCluster());
+  DBGPrintf("    m_relativeSectors:%u\n", m_part_relativeSectors);
   //Serial.printf("    m_sectorsPerFat: %u\n", partVol.getFatVol()->sectorsPerFat());
-  Serial.println();
-#endif	
+  DBGPrintf("\n");
+	
 	
   
   if (m_capacityMB <= 6) {
@@ -121,10 +125,10 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t fat_type, uint8_t* secB
   }
  
   if (rtn) {
-    Serial.printf("free clusters after format: %u\n", partVol.freeClusterCount());
+    DBGPrintf("free clusters after format: %u\n", partVol.freeClusterCount());
     // what happens if I tell the partion to begin again?
     partVol.begin(m_dev, true, m_part+1);  // need to 1 bias again...
-    Serial.printf("free clusters after begin on partVol: %u\n", partVol.freeClusterCount());
+    DBGPrintf("free clusters after begin on partVol: %u\n", partVol.freeClusterCount());
 	m_dev->syncDevice();
 	
     if (has_volume_label) partVol.setVolumeLabel(volName);
@@ -139,7 +143,7 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t fat_type, uint8_t* secB
 
 
 //-----------------------------------------------------------------------------
-bool PFsFatFormatter::createPartition(BlockDevice* dev, uint8_t fat_type, uint32_t startSector, uint32_t sectorCount, uint8_t* secBuf, print_t* pr) {
+bool PFsFatFormatter::createFatPartition(BlockDevice* dev, uint8_t fat_type, uint32_t startSector, uint32_t sectorCount, uint8_t* secBuf, print_t* pr) {
   bool rtn;
   
   m_dev = dev;
@@ -148,7 +152,6 @@ bool PFsFatFormatter::createPartition(BlockDevice* dev, uint8_t fat_type, uint32
   m_sectorCount = sectorCount;
   m_part_relativeSectors = startSector;
   
-  //newPart = 1;
   m_part = addPartitionToMbr();  
   if (m_part == 0xff) return false; // error in adding a partition to the MBR
   // Note the add partition code may change the sector count...
@@ -179,16 +182,13 @@ if (fat_type == 0) {
   else fat_type = FAT_TYPE_FAT32;
 }
 
-#if defined(DBG_Print)
-  Serial.println(m_part);
-  Serial.println("\nCreate Partition::format................");
-  Serial.printf("Sector Count: %d, Sectors/MB: %d\n", m_sectorCount, SECTORS_PER_MB);
-  Serial.printf("Partition Capacity (MB): %d\n", m_capacityMB);
-  Serial.printf("Fat Type: %d\n", fat_type);
-  Serial.printf("    m_relativeSectors:%u\n", m_part_relativeSectors);
-  Serial.println();
-#endif	
-  
+  DBGPrintf("\nCreate Partition::format................");
+  DBGPrintf("Sector Count: %d, Sectors/MB: %d\n", m_sectorCount, SECTORS_PER_MB);
+  DBGPrintf("Partition Capacity (MB): %d\n", m_capacityMB);
+  DBGPrintf("Fat Type: %d\n", fat_type);
+  DBGPrintf("    m_relativeSectors:%u\n", m_part_relativeSectors);
+  DBGPrintf("\n");
+
   if(fat_type == 16 && m_sectorCount < 0X400000 ) {
 	 writeMsg("format makeFAT16\r\n");  
 	 rtn = makeFat16();
@@ -199,24 +199,13 @@ if (fat_type == 0) {
 	 rtn = false;
   }
   
-  if (rtn) {
-    // what happens if I tell the partion to begin again?
-	m_dev->syncDevice();
-    writeMsg("Format Done\r\n");
-  } else {
-    writeMsg("Format Failed\r\n");
-  }
-  
-  //newPart = 0;
-  return true;
+  return rtn;
 }
 
-//------------------------------------------------------------------------------
+//====================================================================================
 bool PFsFatFormatter::makeFat16() {
 	
-#if defined(DBG_Print)
-  Serial.printf(" MAKEFAT16\n");
-#endif
+  DBGPrintf(" MAKEFAT16\n");
   uint32_t nc;
   uint32_t r;
   PbsFat_t* pbs = reinterpret_cast<PbsFat_t*>(m_secBuf);
@@ -234,9 +223,7 @@ bool PFsFatFormatter::makeFat16() {
   //nc = (m_sectorCount - m_dataStart)/m_sectorsPerCluster;
   //m_fatSize = (nc + 2 + (BYTES_PER_SECTOR/2) - 1)/(BYTES_PER_SECTOR/2);
   
-#if defined(DBG_Print)
-  Serial.printf("m_relativeSectors: %u, m_fatSize: %u, m_dataStart: %u\n",m_relativeSectors, m_fatSize, m_dataStart) ;
-#endif
+  DBGPrintf("m_relativeSectors: %u, m_fatSize: %u, m_dataStart: %u\n",m_relativeSectors, m_fatSize, m_dataStart) ;
   
   // check valid cluster count for FAT16 volume
   if (nc < 4085 || nc >= 65525) {
@@ -259,9 +246,7 @@ bool PFsFatFormatter::makeFat16() {
   	m_dataStart= m_fatStart + 2 * m_fatSize + FAT16_ROOT_SECTOR_COUNT;
 	m_totalSectors = m_sectorCount;
 
-#if defined(DBG_Print)
-  Serial.printf("partType: %d, m_relativeSectors: %u, fatStart: %u, fatDatastart: %u, totalSectors: %u\n", m_partType, m_relativeSectors, m_fatStart, m_dataStart, m_totalSectors);
-#endif
+  DBGPrintf("partType: %d, m_relativeSectors: %u, fatStart: %u, fatDatastart: %u, totalSectors: %u\n", m_partType, m_relativeSectors, m_fatStart, m_dataStart, m_totalSectors);
 
   // write MBR
   if (!writeMbr()) {
@@ -291,11 +276,10 @@ bool PFsFatFormatter::makeFat16() {
   
 }
 
+
 //------------------------------------------------------------------------------
 bool PFsFatFormatter::makeFat32() {
-#if defined(DBG_Print)
-	Serial.printf(" MAKEFAT32\n");
-#endif
+	DBGPrintf(" MAKEFAT32\n");
   uint32_t nc;
   uint32_t r;
   
@@ -307,7 +291,7 @@ bool PFsFatFormatter::makeFat32() {
     nc = (m_sectorCount - m_dataStart)/m_sectorsPerCluster;
     m_fatSize = (nc + 2 + (BYTES_PER_SECTOR/4) - 1)/(BYTES_PER_SECTOR/4);
     r = m_relativeSectors + 9 + 2*m_fatSize;
-	Serial.printf("m_dataStart: %u, m_fatSize: %u, r: %u\n", m_dataStart, m_fatSize, r);
+	DBGPrintf("m_dataStart: %u, m_fatSize: %u, r: %u\n", m_dataStart, m_fatSize, r);
     if (m_dataStart >= r) {
       break;
     }
@@ -315,14 +299,12 @@ bool PFsFatFormatter::makeFat32() {
   
     //nc = (m_sectorCount - m_dataStart)/m_sectorsPerCluster;
     //m_fatSize = (nc + 2 + (BYTES_PER_SECTOR/4) - 1)/(BYTES_PER_SECTOR/4);
-
-    #if defined(DBG_Print)
-      Serial.printf("    m_sectorCount: %d\n", m_sectorCount);
-      Serial.printf("    m_dataStart: %d\n", m_dataStart);
-      Serial.printf("    m_sectorsPerCluster: %d\n", m_sectorsPerCluster);
-      Serial.printf("    nc: %d\n", nc);
-      Serial.printf("    m_fatSize: %d\n", m_fatSize);
-    #endif
+	DBGPrintf("    m_part: %d\n", m_part);
+    DBGPrintf("    m_sectorCount: %d\n", m_sectorCount);
+    DBGPrintf("    m_dataStart: %d\n", m_dataStart);
+    DBGPrintf("    m_sectorsPerCluster: %d\n", m_sectorsPerCluster);
+    DBGPrintf("    nc: %d\n", nc);
+    DBGPrintf("    m_fatSize: %d\n", m_fatSize);
 
   // error if too few clusters in FAT32 volume
   if (nc < 65525) {
@@ -352,15 +334,7 @@ bool PFsFatFormatter::makeFat32() {
 #if defined(DBG_Print)
   Serial.printf("partType: %d, m_relativeSectors: %u, fatStart: %u, fatDatastart: %u, totalSectors: %u\n", m_partType, m_relativeSectors, m_fatStart, m_dataStart, m_totalSectors);
 #endif
-Serial.printf("new Partition requested: %d\n", newPart);
-#if 0
-  if(newPart == 1){
-	  if (!writeNewMbr()) {
-		return false;
-	  }
-  }
-  newPart = 0;
-#endif  
+ 
   if (!writeMbr()) {
 	return false;
   }
@@ -441,7 +415,7 @@ bool PFsFatFormatter::writeMbr() {
 
 uint8_t PFsFatFormatter::addPartitionToMbr() {
   uint32_t last_start_sector = m_dev->sectorCount();  // get the devices total sector count
-  Serial.printf("PFsFatFormatter::addPartitionToMbr: %u %u %u\n", m_part_relativeSectors, m_sectorCount, last_start_sector);
+  DBGPrintf("\nPFsFatFormatter::addPartitionToMbr: %u %u %u\n", m_part_relativeSectors, m_sectorCount, last_start_sector);
 
   MbrSector_t* mbr = reinterpret_cast<MbrSector_t*>(m_secBuf);
 
@@ -463,20 +437,20 @@ uint8_t PFsFatFormatter::addPartitionToMbr() {
     part_index = 0;
   } else {
     // lets look through to see if we have any empty slots
-    Serial.printf("    p %u: %u %u %u: ", part_index, pt->type, part_sector_start, part_total_sectors);
+    DBGPrintf("    p %u: %u %u %u: ", part_index, pt->type, part_sector_start, part_total_sectors);
     if (pt->type && part_sector_start && part_total_sectors) return 0xff; // We don't have any room in the MBR
     // loop through the blank ones
     while (part_index && (pt->type==0) && (part_sector_start== 0) && (part_total_sectors == 0)) {
-      Serial.println(" - empty slot");
+      DBGPrintf(" - empty slot\n");
       part_index--;
       pt = &mbr->part[part_index];
       part_sector_start = getLe32(pt->relativeSectors);
       part_total_sectors = getLe32(pt->totalSectors);
-      Serial.printf("    p %u: %u %u %u: ", part_index, pt->type, part_sector_start, part_total_sectors);
+      DBGPrintf("    p %u: %u %u %u: ", part_index, pt->type, part_sector_start, part_total_sectors);
     }
     // was empty.
     if  ((part_index==0) && (pt->type==0) && (part_sector_start== 0) && (part_total_sectors == 0)) {
-      Serial.println(" - MBR empty");  
+      DBGPrintf(" - MBR empty\n");  
       return 0; // empty mbr...
     } 
 
@@ -485,17 +459,17 @@ uint8_t PFsFatFormatter::addPartitionToMbr() {
     while ((part_index >= 0) && (m_part_relativeSectors < part_sector_start)) {
       //move that item down
       memcpy((void*)&mbr->part[part_index+1], (void*)pt, sizeof(MbrPart_t));
-      Serial.println("- > Move down");
+      DBGPrintf("- > Move down\n");
       part_index--;
       last_start_sector = part_sector_start; // remember the last start...
 
       pt = &mbr->part[part_index];
       part_sector_start = getLe32(pt->relativeSectors);
       part_total_sectors = getLe32(pt->totalSectors);
-      Serial.printf("    p %d: %u %u %u: ", part_index, pt->type, part_sector_start, part_total_sectors);
+      DBGPrintf("    p %d: %u %u %u: ", part_index, pt->type, part_sector_start, part_total_sectors);
     }
     // Now see if we are at the start or...
-    Serial.println("- exited copy down");
+    DBGPrintf("- exited copy down\n");
     // We should be able to just increment back up...
     part_index++;
 
@@ -503,7 +477,7 @@ uint8_t PFsFatFormatter::addPartitionToMbr() {
     if (m_sectorCount == 0) {
       m_sectorCount = last_start_sector - m_part_relativeSectors;
       m_capacityMB = (m_sectorCount + SECTORS_PER_MB - 1)/SECTORS_PER_MB;
-      Serial.printf("    Adjust sector count: %u = %u - %u CAP: %u\n", m_sectorCount, last_start_sector, m_part_relativeSectors, m_capacityMB);
+      DBGPrintf("    Adjust sector count: %u = %u - %u CAP: %u\n", m_sectorCount, last_start_sector, m_part_relativeSectors, m_capacityMB);
       if (m_capacityMB <= 6) {
         writeMsg("Gap not big enough.\r\n");
         return 0xff;
@@ -511,93 +485,28 @@ uint8_t PFsFatFormatter::addPartitionToMbr() {
     }
     // Should we check for overlaps?
     if ((m_part_relativeSectors + m_sectorCount) > last_start_sector) {
-      Serial.printf(" - overlaps existing partition(%u + %u > %u\n", m_part_relativeSectors, m_sectorCount, last_start_sector);
+      DBGPrintf(" - overlaps existing partition(%u + %u > %u\n", m_part_relativeSectors, m_sectorCount, last_start_sector);
       return 0xff;
     }
 
-    Serial.printf("    Return partion num: %u\n", part_index);
+    DBGPrintf("    Return partion num: %u\n", part_index);
     // BUGBUG:: should probably test that we don't overlap on the other side...
     // probably don't need this, but:
     pt = &mbr->part[part_index];
     memset(pt, 0, sizeof(MbrPart_t));
   }
-  Serial.println("After Add Partition");
+  DBGPrintf("After Add Partition\n");
   dump_hexbytes(&mbr->part[0], 4*sizeof(MbrPart_t));
   m_dev->writeSector(0, m_secBuf);
   return part_index;
 
 }
 
-
 //-----------------------------------------------------------------------------
-bool PFsFatFormatter::writeNewMbr() {
-  uint8_t setIP = 9, last_IP = 0;
-  uint32_t starting_sector;
-  uint32_t next_free_sector = 8192;
-
-  MbrSector_t mbr1;
-
-  if (!m_dev->readSector(0, (uint8_t*)&mbr1)) {
-    Serial.print("\nread MBR failed.\n");
-    //errorPrint();
-    return false;
-  }
-  
-  for (uint8_t ip = 1; ip < 5; ip++) {
-    MbrPart_t *pt = &mbr1.part[ip - 1];
-    starting_sector = getLe32(pt->relativeSectors);
-    uint32_t total_sector = getLe32(pt->totalSectors);
-	  Serial.print( int(ip-1)); Serial.print( ',');
-    Serial.print(starting_sector, DEC); Serial.print(',');
-    Serial.println(total_sector);
-    if (starting_sector > next_free_sector) {
-      Serial.printf("\t < unused area starting at: %u length %u >\n", next_free_sector, starting_sector-next_free_sector);
-	  if(m_part_relativeSectors == next_free_sector) setIP = ip-1;
-    }
-	if(total_sector > 0) {
-		last_IP = ip; 
-	}
-    // Lets get the max of start+total
-    if (starting_sector && total_sector)  next_free_sector = starting_sector + total_sector;
-  }
-
-  if(setIP > 4) setIP = last_IP;
-  Serial.printf("setIP = %d\n", setIP);
-  Serial.printf("lastIP = %d\n", last_IP);
-  
-  m_part = last_IP;
-  return true;
-
-}
-//------------------------------------------------------------------------------
-/*
-bool PFsFatFormatter::initFatDir(uint8_t fatType, uint32_t sectorCount) {
-  size_t n;
-  memset(m_secBuf, 0, BYTES_PER_SECTOR);
-  writeMsg("Writing FAT ");
-  for (uint32_t i = 1; i < sectorCount; i++) {
-    if (!m_dev->writeSector(m_fatStart + i, m_secBuf)) {
-       return false;
-    }
-    if ((i%(sectorCount/32)) == 0) {
-      writeMsg(".");
-    }
-  }
-  writeMsg("\r\n");
-  // Allocate reserved clusters and root for FAT32.
-  m_secBuf[0] = 0XF8;
-  n = fatType == 16 ? 4 : 12;
-  for (size_t i = 1; i < n; i++) {
-    m_secBuf[i] = 0XFF;
-  }
-  return m_dev->writeSector(m_fatStart, m_secBuf) &&
-         m_dev->writeSector(m_fatStart + m_fatSize, m_secBuf);
-}
-*/
 
 #define CSECTORS_PER_WRITE 32
 bool PFsFatFormatter::initFatDir(uint8_t fatType, uint32_t sectorCount) {
-  Serial.printf("PFsFatFormatter::initFatDir(%u, %u)\n", fatType, sectorCount);
+  DBGPrintf("PFsFatFormatter::initFatDir(%u, %u)\n", fatType, sectorCount);
   size_t n;
   uint32_t fat_sector = 1;
   writeMsg("Writing FAT ");
@@ -719,8 +628,6 @@ void PFsFatFormatter::lbaToMbrChs(uint8_t* chs, uint32_t capacityMB, uint32_t lb
   chs[1] = ((c >> 2) & 0XC0) | s;
   chs[2] = c;
 }
-
-//----------------------------------------------------------------
 
 void PFsFatFormatter::dump_hexbytes(const void *ptr, int len)
 {
