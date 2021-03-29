@@ -110,7 +110,7 @@ bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t fat_type, uint8_t* secB
     
   //rtn = m_sectorCount < 0X400000 ? makeFat16() :makeFat32();
   
-  if(fat_type == 16 && fat_type < 0X400000 ) {
+  if(fat_type == 16 && m_sectorCount < 0X400000 ) {
 	writeMsg("format makeFAT16\r\n");  
 	rtn = makeFat16();
   } else if(fat_type == 32) {
@@ -146,10 +146,13 @@ bool PFsFatFormatter::createPartition(BlockDevice* dev, uint8_t fat_type, uint32
   m_secBuf = secBuf;
   m_pr = pr;
   m_sectorCount = sectorCount;
-  m_capacityMB = (m_sectorCount + SECTORS_PER_MB - 1)/SECTORS_PER_MB;
   m_part_relativeSectors = startSector;
   
   //newPart = 1;
+  m_part = addPartitionToMbr();  
+  if (m_part == 0xff) return false; // error in adding a partition to the MBR
+  // Note the add partition code may change the sector count...
+  m_capacityMB = (m_sectorCount + SECTORS_PER_MB - 1)/SECTORS_PER_MB;
 
   if (m_capacityMB <= 6) {
     writeMsg("Card is too small.\r\n");
@@ -171,9 +174,10 @@ bool PFsFatFormatter::createPartition(BlockDevice* dev, uint8_t fat_type, uint32
     m_sectorsPerCluster = 128;
   }
 
-  m_part = addPartitionToMbr(startSector, sectorCount);  
-  if (m_part == 0xff) return false; // error in adding a partition to the MBR
-
+if (fat_type == 0) {
+  if (m_capacityMB < 2048) fat_type = FAT_TYPE_FAT16;
+  else fat_type = FAT_TYPE_FAT32;
+}
 
 #if defined(DBG_Print)
   Serial.println(m_part);
@@ -185,14 +189,14 @@ bool PFsFatFormatter::createPartition(BlockDevice* dev, uint8_t fat_type, uint32
   Serial.println();
 #endif	
   
-   if(fat_type == 16 && fat_type < 0X400000 ) {
-	writeMsg("format makeFAT16\r\n");  
-	rtn = makeFat16();
+  if(fat_type == 16 && m_sectorCount < 0X400000 ) {
+	 writeMsg("format makeFAT16\r\n");  
+	 rtn = makeFat16();
   } else if(fat_type == 32) {
-	writeMsg("format makeFAT32\r\n");  
-	rtn = makeFat32();
+	 writeMsg("format makeFAT32\r\n");  
+	 rtn = makeFat32();
   }	else {
-	rtn = false;
+	 rtn = false;
   }
   
   if (rtn) {
@@ -435,9 +439,9 @@ bool PFsFatFormatter::writeMbr() {
 
 }
 
-uint8_t PFsFatFormatter::addPartitionToMbr(uint32_t startSector, uint32_t sectorCount) {
-  uint32_t endSector = startSector + sectorCount;
-  Serial.printf("PFsFatFormatter::addPartitionToMbr: %u %u (%u)\n", startSector, sectorCount, endSector);
+uint8_t PFsFatFormatter::addPartitionToMbr() {
+  uint32_t last_start_sector = m_dev->sectorCount();  // get the devices total sector count
+  Serial.printf("PFsFatFormatter::addPartitionToMbr: %u %u %u\n", m_part_relativeSectors, m_sectorCount, last_start_sector);
 
   MbrSector_t* mbr = reinterpret_cast<MbrSector_t*>(m_secBuf);
 
@@ -447,7 +451,7 @@ uint8_t PFsFatFormatter::addPartitionToMbr(uint32_t startSector, uint32_t sector
   }
   dump_hexbytes(&mbr->part[0], 4*sizeof(MbrPart_t));
 
-  uint8_t part_index = 3; // zero index;
+  int part_index = 3; // zero index;
   MbrPart_t *pt = &mbr->part[part_index];
   uint32_t part_sector_start = getLe32(pt->relativeSectors);
   uint32_t part_total_sectors = getLe32(pt->totalSectors);
@@ -478,26 +482,39 @@ uint8_t PFsFatFormatter::addPartitionToMbr(uint32_t startSector, uint32_t sector
 
     // Now see if we found the spot or if we need to move items down.
 
-    while (part_index && (startSector < part_sector_start)) {
-      // Should we check for overlaps?
-      if (endSector > part_sector_start) {
-        Serial.println(" - overlaps existing partition");
-        return 0xff;
-      }
+    while ((part_index >= 0) && (m_part_relativeSectors < part_sector_start)) {
       //move that item down
       memcpy((void*)&mbr->part[part_index+1], (void*)pt, sizeof(MbrPart_t));
       Serial.println("- > Move down");
       part_index--;
+      last_start_sector = part_sector_start; // remember the last start...
 
       pt = &mbr->part[part_index];
       part_sector_start = getLe32(pt->relativeSectors);
       part_total_sectors = getLe32(pt->totalSectors);
-      Serial.printf("    p %u: %u %u %u: ", part_index, pt->type, part_sector_start, part_total_sectors);
+      Serial.printf("    p %d: %u %u %u: ", part_index, pt->type, part_sector_start, part_total_sectors);
     }
     // Now see if we are at the start or...
     Serial.println("- exited copy down");
-    if (part_index != 0) part_index++; // back up to the one before
-    else if (startSector > part_sector_start) part_index++; // likewise need to backup. 
+    // We should be able to just increment back up...
+    part_index++;
+
+    // Now lets see about does it fit or if we should autofit...
+    if (m_sectorCount == 0) {
+      m_sectorCount = last_start_sector - m_part_relativeSectors;
+      m_capacityMB = (m_sectorCount + SECTORS_PER_MB - 1)/SECTORS_PER_MB;
+      Serial.printf("    Adjust sector count: %u = %u - %u CAP: %u\n", m_sectorCount, last_start_sector, m_part_relativeSectors, m_capacityMB);
+      if (m_capacityMB <= 6) {
+        writeMsg("Gap not big enough.\r\n");
+        return 0xff;
+      }  
+    }
+    // Should we check for overlaps?
+    if ((m_part_relativeSectors + m_sectorCount) > last_start_sector) {
+      Serial.printf(" - overlaps existing partition(%u + %u > %u\n", m_part_relativeSectors, m_sectorCount, last_start_sector);
+      return 0xff;
+    }
+
     Serial.printf("    Return partion num: %u\n", part_index);
     // BUGBUG:: should probably test that we don't overlap on the other side...
     // probably don't need this, but:

@@ -22,7 +22,7 @@ uint8_t count_partVols = 0;
 #define CNT_MSDRIVES 3
 msController msDrives[CNT_MSDRIVES](myusb);
 UsbFs msc[CNT_MSDRIVES];
-bool g_exfat_dump_changed_sectors = true;
+bool g_exfat_dump_changed_sectors = false;
 
 #define SD_CONFIG SdioConfig(FIFO_SDIO)
 #define SD_SPICONFIG SdioConfig(FIFO_SDIO)
@@ -365,33 +365,13 @@ void CreatePartition(uint8_t drive_index, uint32_t starting_sector, uint32_t cou
     Serial.println("Not a valid USB drive");
     return;
   }
-  if (count_of_sectors == 0) count_of_sectors = msDrives[drive_index].msCapacity.Blocks - starting_sector;
-  if ((starting_sector == 0)  && (count_of_sectors == msDrives[drive_index].msCapacity.Blocks)) {
-    // doing the whole disks...
-    for (int ii = 0; ii < count_partVols; ii++) {
-      if (partVols_drive_index[ii] == drive_index) {
-        while (Serial.read() != -1) ;
-        Serial.println("Warning it appears like this drive has valid partitions, continue: Y? ");
-        int ch;
-        while ((ch = Serial.read()) == -1) ;
-        if (ch != 'Y') {
-          Serial.println("Canceled");
-          return;
-        }
-        break;
-      }
-    }
-  }
-
-  // right now we will only call the fat formater. 
-  uint8_t fat_type = (count_of_sectors < SECTORS_2GB)? FAT_TYPE_FAT16 : FAT_TYPE_FAT32;
-  FatFormatter.createPartition(msc[drive_index].usbDrive(), fat_type, starting_sector, count_of_sectors, sectorBuffer, &Serial);
+  FatFormatter.createPartition(msc[drive_index].usbDrive(), 0, starting_sector, count_of_sectors, sectorBuffer, &Serial);
 
 }
 
 //----------------------------------------------------------------
 // Function to handle one MS Drive...
-void InitializeUSBDrive(uint8_t drive_index, uint8_t fat_type)
+void InitializeBlockDevice(uint8_t drive_index, uint8_t fat_type)
 {
   BlockDeviceInterface *dev = nullptr;
   PFsVolume partVol;
@@ -594,7 +574,7 @@ bool DeletePartition(BlockDeviceInterface *blockDev, uint8_t part)
     return false;
   }
   Serial.println("MBR Before");
-  dump_hexbytes(sectorBuffer, 512);
+  dump_hexbytes(&mbr->part[0], 4*sizeof(MbrPart_t));
 
   // Copy in the higher numer partitions; 
   for (--part; part < 3; part++)  memcpy(&mbr->part[part], &mbr->part[part+1], sizeof(MbrPart_t));
@@ -602,7 +582,7 @@ bool DeletePartition(BlockDeviceInterface *blockDev, uint8_t part)
   memset(&mbr->part[part], 0, sizeof(MbrPart_t));
 
   Serial.println("MBR After");
-  dump_hexbytes(sectorBuffer, 512);
+  dump_hexbytes(&mbr->part[0], 4*sizeof(MbrPart_t));
 
   return blockDev->writeSector(0, sectorBuffer);
 }
@@ -706,7 +686,7 @@ void loop() {
   uint8_t commmand = Serial.read();
 
   int ch = Serial.read();
-  uint8_t partVol_index = (uint8_t)CommandLineReadNextNumber(ch, 0);
+  uint32_t partVol_index = CommandLineReadNextNumber(ch, 0);
   while (ch == ' ') ch = Serial.read();
   uint8_t fat_type = 0;
   switch(commmand) {
@@ -775,13 +755,13 @@ void loop() {
 
       break;  
     case 'R':
-      Serial.printf("\n **** Try Sledgehammer on USB Drive %d ****\n", partVol_index);
+      Serial.printf("\n **** Try Sledgehammer on USB Drive %u ****\n", partVol_index);
       switch(ch) {
         case '1': fat_type = FAT_TYPE_FAT16; break;
         case '3': fat_type = FAT_TYPE_FAT32; break;
         case 'e': fat_type = FAT_TYPE_EXFAT; break;
       }
-      InitializeUSBDrive(partVol_index, fat_type); 
+      InitializeBlockDevice(partVol_index, fat_type); 
       break;
     case 'X':
       {

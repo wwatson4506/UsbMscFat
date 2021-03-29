@@ -55,7 +55,7 @@ class PFsFatFormatter {
   bool makeFat32();
   bool writeMbr();
   bool writeNewMbr();
-  uint8_t addPartitionToMbr(uint32_t startSector, uint32_t sectorCount);  
+  uint8_t addPartitionToMbr();  
   void lbaToMbrChs(uint8_t* chs, uint32_t capacityMB, uint32_t lba);
   uint32_t m_capacityMB;
   uint32_t m_dataStart;
