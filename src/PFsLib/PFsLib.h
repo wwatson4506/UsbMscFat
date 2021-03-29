@@ -32,4 +32,18 @@
 #include "PFsFile.h"
 #include "PFsFatFormatter.h"
 #include "PFsExFatFormatter.h"
+
+class PFsLib : public PFsFatFormatter, PFsExFatFormatter
+{
+ public:
+	bool deletePartition(BlockDeviceInterface *blockDev, uint8_t part, print_t* pr); 
+	void InitializeDrive(BlockDeviceInterface *dev, uint8_t fat_type, print_t* pr);
+ void dump_hexbytes(const void *ptr, int len);
+ private:
+	BlockDevice* m_dev;
+	print_t*m_pr;
+	
+
+};
+ 
 #endif  // PFsLib_h
