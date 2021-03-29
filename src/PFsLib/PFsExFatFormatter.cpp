@@ -24,6 +24,7 @@
  */
 #define DBG_FILE "PFsExFatFormatter.cpp"
 //#include "../common/DebugMacros.h"
+#include "PFsLib.h"
 #include "PFsExFatFormatter.h"
 
 //#define DBG_PRINT 1
