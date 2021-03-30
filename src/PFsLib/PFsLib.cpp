@@ -197,10 +197,10 @@ void PFsLib::formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive, bo
 
     } else {  
       if (fat_type != FAT_TYPE_EXFAT) {
-        FatFormat(partVol, fat_type, sectorBuffer, &Serialx);
+        PFsFatFormatter::format(partVol, fat_type, sectorBuffer, &Serialx);
       } else {
         Serialx.println("ExFatFormatter - WIP");
-        ExFatFormat(partVol, sectorBuffer, &Serial);
+        PFsExFatFormatter::format(partVol, sectorBuffer, &Serial);
         if (g_exfat_dump_changed_sectors) {
           // Now lets see what changed
           uint8_t *sector_buffer = bpb_area;
