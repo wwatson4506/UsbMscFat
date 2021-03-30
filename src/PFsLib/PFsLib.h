@@ -33,7 +33,7 @@
 #include "PFsFatFormatter.h"
 #include "PFsExFatFormatter.h"
 
-class PFsLib : public PFsFatFormatter, PFsExFatFormatter
+class PFsLib : public PFsFatFormatter, public PFsExFatFormatter
 {
  public:
 	bool deletePartition(BlockDeviceInterface *blockDev, uint8_t part, print_t* pr, Stream &Serialx); 

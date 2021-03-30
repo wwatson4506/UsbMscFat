@@ -138,6 +138,8 @@ void PFsLib::InitializeDrive(BlockDeviceInterface *dev, uint8_t fat_type, print_
   // Temporary until exfat is setup...
   if (fat_type == FAT_TYPE_EXFAT) {
     m_pr->println("TODO createPartition on ExFat");
+    m_dev->writeSector(0, sectorBuffer);
+    createExFatPartition(m_dev, 2048, sectorCount, sectorBuffer, &Serial);
     return;
   } else {
     // Fat16/32
