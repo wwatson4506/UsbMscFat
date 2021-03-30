@@ -55,7 +55,7 @@ const uint16_t FAT16_ROOT_SECTOR_COUNT =
 #define writeMsg(str) if (m_pr) m_pr->write(str)
 #endif  // PRINT_FORMAT_PROGRESS
 //------------------------------------------------------------------------------
-bool PFsFatFormatter::FatFormat(PFsVolume &partVol, uint8_t fat_type, uint8_t* secBuf, print_t* pr) {
+bool PFsFatFormatter::format(PFsVolume &partVol, uint8_t fat_type, uint8_t* secBuf, print_t* pr) {
   MbrSector_t mbr;
 
   bool rtn;

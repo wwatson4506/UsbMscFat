@@ -45,7 +45,7 @@ class PFsExFatFormatter {
    *
    * \return true for success or false for failure.
    */
-  bool ExFatFormat(PFsVolume &partVol, uint8_t* secBuf, print_t* pr);
+  bool format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr);
   
  private:
  

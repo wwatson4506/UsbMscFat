@@ -50,7 +50,7 @@ const uint32_t ROOT_CLUSTER = 4;
 #endif  // PRINT_FORMAT_PROGRESS
 //------------------------------------------------------------------------------
 
-bool PFsExFatFormatter::ExFatFormat(PFsVolume &partVol, uint8_t* secBuf, print_t* pr) {
+bool PFsExFatFormatter::format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr) {
 #if !PRINT_FORMAT_PROGRESS
 (void)pr;
 #endif  //  !PRINT_FORMAT_PROGRESS
