@@ -138,6 +138,8 @@ void PFsLib::InitializeDrive(BlockDeviceInterface *dev, uint8_t fat_type, print_
   // Temporary until exfat is setup...
   if (fat_type == FAT_TYPE_EXFAT) {
     m_pr->println("TODO createPartition on ExFat");
+    m_dev->writeSector(0, sectorBuffer);
+    createExFatPartition(m_dev, 2048, sectorCount, sectorBuffer, &Serial);
     return;
   } else {
     // Fat16/32
@@ -197,10 +199,10 @@ void PFsLib::formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive, bo
 
     } else {  
       if (fat_type != FAT_TYPE_EXFAT) {
-        FatFormat(partVol, fat_type, sectorBuffer, &Serialx);
+        PFsFatFormatter::format(partVol, fat_type, sectorBuffer, &Serialx);
       } else {
         Serialx.println("ExFatFormatter - WIP");
-        ExFatFormat(partVol, sectorBuffer, &Serial);
+        PFsExFatFormatter::format(partVol, sectorBuffer, &Serial);
         if (g_exfat_dump_changed_sectors) {
           // Now lets see what changed
           uint8_t *sector_buffer = bpb_area;

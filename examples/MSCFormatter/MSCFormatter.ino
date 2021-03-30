@@ -164,7 +164,7 @@ void ShowPartitionList() {
 // Function to handle one MS Drive...
 //----------------------------------------------------------------
 
-void CreatePartition(uint8_t drive_index, uint32_t starting_sector, uint32_t count_of_sectors) 
+void CreatePartition(uint8_t drive_index, uint32_t formatType, uint32_t starting_sector, uint32_t count_of_sectors) 
 {
     // What validation should we do here?  Could do a little like if 0 for count 
     // find out how big the drive is...
@@ -172,9 +172,11 @@ void CreatePartition(uint8_t drive_index, uint32_t starting_sector, uint32_t cou
     Serial.println("Not a valid USB drive");
     return;
   }
-  
-  pfsLIB.createFatPartition(msc[drive_index].usbDrive(), 0, starting_sector, count_of_sectors, sectorBuffer, &Serial);
-
+  if(formatType == 64) {
+    pfsLIB.createExFatPartition(msc[drive_index].usbDrive(), starting_sector, count_of_sectors, sectorBuffer, &Serial);
+  } else {
+    pfsLIB.createFatPartition(msc[drive_index].usbDrive(), formatType, starting_sector, count_of_sectors, sectorBuffer, &Serial);
+  }
 }
 
 //----------------------------------------------------------------
@@ -371,13 +373,14 @@ void loop() {
     case 'N':
       {
       // do the work there...
+        uint32_t formatType      = CommandLineReadNextNumber(ch, 0);  //16, 32, 64(exFat)
         uint32_t starting_sector = CommandLineReadNextNumber(ch, 0);
         uint32_t count_of_sectors = CommandLineReadNextNumber(ch, 0);
         Serial.printf("\n *** Create a NEW partition Drive %u Starting at: %u Count: %u ***\n", partVol_index, starting_sector, count_of_sectors);
-        CreatePartition(partVol_index, starting_sector, count_of_sectors);
+        CreatePartition(partVol_index, formatType, starting_sector, count_of_sectors);
       }
-
-      break;  
+      break;
+  
     case 'R':
       Serial.printf("\n **** Try Sledgehammer on USB Drive %u ****\n", partVol_index);
       switch(ch) {
