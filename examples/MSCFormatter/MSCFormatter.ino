@@ -36,75 +36,11 @@ SdFs sdSPI;
 #define SPI_SPEED SD_SCK_MHZ(33)  // adjust to sd card 
 
 PFsLib pfsLIB;
-PFsFatFormatter FatFormatter;
-PFsExFatFormatter ExFatFormatter;
+
 uint8_t  sectorBuffer[512];
 uint8_t volName[32];
 
 //----------------------------------------------------------------
-uint32_t mbrDmp(BlockDeviceInterface *blockDev, uint32_t device_sector_count) {
-  MbrSector_t mbr;
-  uint32_t next_free_sector = 8192;  // Some inital value this is default for Win32 on SD...
-  // bool valid = true;
-  if (!blockDev->readSector(0, (uint8_t*)&mbr)) {
-    Serial.print("\nread MBR failed.\n");
-    //errorPrint();
-    return (uint32_t)-1;
-  }
-  Serial.print("\nmsc # Partition Table\n");
-  Serial.print("\tpart,boot,bgnCHS[3],type,endCHS[3],start,length\n");
-  for (uint8_t ip = 1; ip < 5; ip++) {
-    MbrPart_t *pt = &mbr.part[ip - 1];
-    uint32_t starting_sector = getLe32(pt->relativeSectors);
-    uint32_t total_sector = getLe32(pt->totalSectors);
-    if (starting_sector > next_free_sector) {
-      Serial.printf("\t < unused area starting at: %u length %u >\n", next_free_sector, starting_sector-next_free_sector);
-    }
-    switch (pt->type) {
-    case 4:
-    case 6:
-    case 0xe:
-      Serial.print("FAT16:\t");
-      break;
-    case 11:
-    case 12:
-      Serial.print("FAT32:\t");
-      break;
-    case 7:
-      Serial.print("exFAT:\t");
-      break;
-    case 0xf:
-      Serial.print("Extend:\t");
-      break;
-    case 0x83: Serial.print("ext2/3/4:\t"); break; 
-    default:
-      Serial.print("pt_#");
-      Serial.print(pt->type);
-      Serial.print(":\t");
-      break;
-    }
-    Serial.print( int(ip)); Serial.print( ',');
-    Serial.print(int(pt->boot), HEX); Serial.print( ',');
-    for (int i = 0; i < 3; i++ ) {
-      Serial.print("0x"); Serial.print(int(pt->beginCHS[i]), HEX); Serial.print( ',');
-    }
-    Serial.print("0x"); Serial.print(int(pt->type), HEX); Serial.print( ',');
-    for (int i = 0; i < 3; i++ ) {
-      Serial.print("0x"); Serial.print(int(pt->endCHS[i]), HEX); Serial.print( ',');
-    }
-    Serial.print(starting_sector, DEC); Serial.print(',');
-    Serial.println(total_sector);
-
-    // Lets get the max of start+total
-    if (starting_sector && total_sector)  next_free_sector = starting_sector + total_sector;
-  }
-  if ((device_sector_count != (uint32_t)-1) && (next_free_sector < device_sector_count)) {
-    Serial.printf("\t < unused area starting at: %u length %u >\n", next_free_sector, device_sector_count-next_free_sector);
-  } 
-  return next_free_sector;
-}
-//----------------------------------------------------------------
-
 void dump_hexbytes(const void *ptr, int len)
 {
   if (ptr == NULL || len <= 0) return;
@@ -126,32 +62,6 @@ void dump_hexbytes(const void *ptr, int len)
 }
 //----------------------------------------------------------------
 
-void compare_dump_hexbytes(const void *ptr, const uint8_t *compare_buf, int len)
-{
-  if (ptr == NULL || len <= 0) return;
-  const uint8_t *p = (const uint8_t *)ptr;
-  while (len) {
-    for (uint8_t i = 0; i < 32; i++) {
-      if (i > len) break;
-      Serial.printf("%c%02X", (p[i]==compare_buf[i])? ' ' : '*',p[i]);
-    }
-    Serial.print(":");
-    for (uint8_t i = 0; i < 32; i++) {
-      if (i > len) break;
-      Serial.printf("%c", ((p[i] >= ' ') && (p[i] <= '~')) ? p[i] : '.');
-    }
-    Serial.println();
-    p += 32;
-    compare_buf += 32;
-    len -= 32;
-  }
-}
-
-
-
-
-//----------------------------------------------------------------
-
 // Function to handle one MS Drive...
 void processMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
 {
@@ -170,7 +80,7 @@ void processMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
     return;
   }
   Serial.printf("Blocks: %u Size: %u\n", msDrive.msCapacity.Blocks, msDrive.msCapacity.BlockSize);
-  mbrDmp( msc.usbDrive(),  msDrive.msCapacity.Blocks);
+  pfsLIB.mbrDmp( msc.usbDrive(),  msDrive.msCapacity.Blocks, Serial);
 
   // lets see if we have any partitions to add to our list...
   for (uint8_t i = 0; i < 4; i++) {
@@ -194,7 +104,7 @@ void processSDDrive()
     Serial.println("initialization failed.\n");
     return;
   }
-  mbrDmp(sd.card(), (uint32_t)-1 );
+  pfsLIB.mbrDmp(sd.card(), (uint32_t)-1 , Serial);
   PFsVolume partVol;
 
   for (uint8_t i = 0; i < 4; i++) {
@@ -214,7 +124,7 @@ void ProcessSPISD() {
     Serial.println("initialization failed.\n");
     return;
   }
-  mbrDmp(sdSPI.card(), (uint32_t)-1 );
+  pfsLIB.mbrDmp(sdSPI.card(), (uint32_t)-1 , Serial);
   for (uint8_t i = 0; i < 4; i++) {
   if (count_partVols == CNT_PARITIONS) return; // don't overrun
     if (partVols[count_partVols].begin(sdSPI.card(), true, i + 1)) {
@@ -250,113 +160,9 @@ void ShowPartitionList() {
   }
 }
 
-void print_partion_info(PFsVolume &partVol) 
-{
-  uint8_t buffer[512];
-  MbrSector_t *mbr = (MbrSector_t *)buffer;
-  if (!partVol.blockDevice()->readSector(0, buffer)) return;
-  MbrPart_t *pt = &mbr->part[partVol.part() - 1];
-
-  uint32_t starting_sector = getLe32(pt->relativeSectors);
-  uint32_t sector_count = getLe32(pt->totalSectors);
-  Serial.printf("Starting Sector: %u, Sector Count: %u\n", starting_sector, sector_count);    
-
-  FatPartition *pfp = partVol.getFatVol();
-  if (pfp) {
-    Serial.printf("fatType:%u\n", pfp->fatType());
-    Serial.printf("bytesPerClusterShift:%u\n", pfp->bytesPerClusterShift());
-    Serial.printf("bytesPerCluster:%u\n", pfp->bytesPerCluster());
-    Serial.printf("bytesPerSector:%u\n", pfp->bytesPerSector());
-    Serial.printf("bytesPerSectorShift:%u\n", pfp->bytesPerSectorShift());
-    Serial.printf("sectorMask:%u\n", pfp->sectorMask());
-    Serial.printf("sectorsPerCluster:%u\n", pfp->sectorsPerCluster());
-    Serial.printf("sectorsPerFat:%u\n", pfp->sectorsPerFat());
-    Serial.printf("clusterCount:%u\n", pfp->clusterCount());
-    Serial.printf("dataStartSector:%u\n", pfp->dataStartSector());
-    Serial.printf("fatStartSector:%u\n", pfp->fatStartSector());
-    Serial.printf("rootDirEntryCount:%u\n", pfp->rootDirEntryCount());
-    Serial.printf("rootDirStart:%u\n", pfp->rootDirStart());
-  }
-} 
-
 //----------------------------------------------------------------
 // Function to handle one MS Drive...
-void formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive)
-{
-
-  if (fat_type == 0) fat_type = partVol.fatType();
-
-  if (fat_type != FAT_TYPE_FAT12) {
-    // 
-    uint8_t buffer[512];
-    MbrSector_t *mbr = (MbrSector_t *)buffer;
-    if (!partVol.blockDevice()->readSector(0, buffer)) return;
-    MbrPart_t *pt = &mbr->part[partVol.part() - 1];
-
-    uint32_t sector = getLe32(pt->relativeSectors);
-
-    // I am going to read in 24 sectors for EXFat.. 
-    uint8_t *bpb_area = (uint8_t*)malloc(512*24); 
-    if (!bpb_area) {
-      Serial.println("Unable to allocate dump memory");
-      return;
-    }
-    // Lets just read in the top 24 sectors;
-    uint8_t *sector_buffer = bpb_area;
-    for (uint32_t i = 0; i < 24; i++) {
-      partVol.blockDevice()->readSector(sector+i, sector_buffer);
-      sector_buffer += 512;
-    }
-
-    if (dump_drive) {
-      sector_buffer = bpb_area;
-      
-      for (uint32_t i = 0; i < 12; i++) {
-        Serial.printf("\nSector %u(%u)\n", i, sector);
-        dump_hexbytes(sector_buffer, 512);
-        sector++;
-        sector_buffer += 512;
-      }
-      for (uint32_t i = 12; i < 24; i++) {
-        Serial.printf("\nSector %u(%u)\n", i, sector);
-        compare_dump_hexbytes(sector_buffer, sector_buffer - (512*12), 512);
-        sector++;
-        sector_buffer += 512;
-      }
-
-    } else {  
-      if (fat_type != FAT_TYPE_EXFAT) {
-        FatFormatter.format(partVol, fat_type, sectorBuffer, &Serial);
-      } else {
-        Serial.println("ExFatFormatter - WIP");
-        ExFatFormatter.format(partVol, sectorBuffer, &Serial);
-        if (g_exfat_dump_changed_sectors) {
-          // Now lets see what changed
-          uint8_t *sector_buffer = bpb_area;
-          for (uint32_t i = 0; i < 24; i++) {
-            partVol.blockDevice()->readSector(sector, buffer);
-            Serial.printf("Sector %u(%u)\n", i, sector);
-            if (memcmp(buffer, sector_buffer, 512)) {
-              compare_dump_hexbytes(buffer, sector_buffer, 512);
-              Serial.println();
-            }
-            sector++;
-            sector_buffer += 512;
-          }
-        }
-      }
-    }
-    free(bpb_area); 
-  }
-  else
-    Serial.println("Cannot format an invalid partition");
-}
-
-
 //----------------------------------------------------------------
-#define SECTORS_2GB 4194304   // (2^30 * 2) / 512
-#define SECTORS_32GB 67108864 // (2^30 * 32) / 512
-#define SECTORS_127GB 266338304 // (2^30 * 32) / 512
 
 void CreatePartition(uint8_t drive_index, uint32_t starting_sector, uint32_t count_of_sectors) 
 {
@@ -367,7 +173,7 @@ void CreatePartition(uint8_t drive_index, uint32_t starting_sector, uint32_t cou
     return;
   }
   
-  FatFormatter.createFatPartition(msc[drive_index].usbDrive(), 0, starting_sector, count_of_sectors, sectorBuffer, &Serial);
+  pfsLIB.createFatPartition(msc[drive_index].usbDrive(), 0, starting_sector, count_of_sectors, sectorBuffer, &Serial);
 
 }
 
@@ -404,51 +210,9 @@ void InitializeBlockDevice(uint8_t drive_index, uint8_t fat_type)
     dev = (USBMSCDevice*)msc[drive_index].usbDrive();
   }
 
-  
-
   pfsLIB.InitializeDrive(dev, fat_type, &Serial);
 
-
 }
-
-//=============================================================================
-bool DeletePartition(BlockDeviceInterface *blockDev, uint8_t part) 
-{
-
-  MbrSector_t* mbr = reinterpret_cast<MbrSector_t*>(sectorBuffer);
-  if (!blockDev->readSector(0, sectorBuffer)) {
-    Serial.print("\nERROR: read MBR failed.\n");
-    return false;
-  }
-
-  if ((part < 1) || (part > 4)) {
-    Serial.printf("ERROR: Invalid Partition: %u, only 1-4 are valid\n", part);
-    return false;
-  }
-
-  Serial.println("Warning this will delete the partition are you sure, continue: Y? ");
-  int ch;
-  while ((ch = Serial.read()) == -1) ;
-  if (ch != 'Y') {
-    Serial.println("Canceled");
-    return false;
-  }
-  Serial.println("MBR Before");
-  dump_hexbytes(&mbr->part[0], 4*sizeof(MbrPart_t));
-
-  // Copy in the higher numer partitions; 
-  for (--part; part < 3; part++)  memcpy(&mbr->part[part], &mbr->part[part+1], sizeof(MbrPart_t));
-  // clear out the last one
-  memset(&mbr->part[part], 0, sizeof(MbrPart_t));
-
-  Serial.println("MBR After");
-  dump_hexbytes(&mbr->part[0], 4*sizeof(MbrPart_t));
-
-  return blockDev->writeSector(0, sectorBuffer);
-}
-
-
-
 
 //=============================================================================
 void setup() {
@@ -563,18 +327,18 @@ void loop() {
 
       Serial.printf("\n **** Start format partition %d ****\n", partVol_index);
       if (partVol_index < count_partVols) 
-        formatter(partVols[partVol_index], fat_type, false); 
+        pfsLIB.formatter(partVols[partVol_index], fat_type, false, g_exfat_dump_changed_sectors, Serial); 
       break;
 
     case 'd':
       Serial.printf("\n **** Start dump partition %d ****\n", partVol_index);
       if (partVol_index < count_partVols) 
-        formatter(partVols[partVol_index], 0, true); 
+        pfsLIB.formatter(partVols[partVol_index], 0, true, g_exfat_dump_changed_sectors, Serial); 
       break;
     case 'p':
       while (partVol_index < count_partVols) {
         Serial.printf("\n **** print partition info %d ****\n", partVol_index);
-        print_partion_info(partVols[partVol_index]); 
+        pfsLIB.print_partion_info(partVols[partVol_index], Serial); 
         partVol_index = (uint8_t)CommandLineReadNextNumber(ch, 0xff);
       }
       break;
@@ -629,11 +393,11 @@ void loop() {
           // User is using the devide version... 
           ch = Serial.read();             
           uint8_t usb_device_index = (uint8_t)CommandLineReadNextNumber(ch, 0);
-          if (usb_device_index < CNT_MSDRIVES) pfsLIB.deletePartition(msc[usb_device_index].usbDrive(), partVol_index, &Serial);
+          if (usb_device_index < CNT_MSDRIVES) pfsLIB.deletePartition(msc[usb_device_index].usbDrive(), partVol_index, &Serial, Serial);
           else Serial.println("Drive index is out of range");
         } else {
           if (partVol_index < count_partVols) {
-            pfsLIB.deletePartition(partVols[partVol_index].blockDevice(), partVols[partVol_index].part(), &Serial);
+            pfsLIB.deletePartition(partVols[partVol_index].blockDevice(), partVols[partVol_index].part(), &Serial, Serial);
           } else {
             Serial.println("Partition index is out of range");
           }
