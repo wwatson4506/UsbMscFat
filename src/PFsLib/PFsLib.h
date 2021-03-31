@@ -32,4 +32,22 @@
 #include "PFsFile.h"
 #include "PFsFatFormatter.h"
 #include "PFsExFatFormatter.h"
+
+class PFsLib : public PFsFatFormatter, public PFsExFatFormatter
+{
+ public:
+	bool deletePartition(BlockDeviceInterface *blockDev, uint8_t part, print_t* pr, Stream &Serialx); 
+	void InitializeDrive(BlockDeviceInterface *dev, uint8_t fat_type, print_t* pr);
+	void formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive, bool g_exfat_dump_changed_sectors, Stream &Serialx);
+	void dump_hexbytes(const void *ptr, int len);
+	void print_partion_info(PFsVolume &partVol, Stream &Serialx);
+	uint32_t mbrDmp(BlockDeviceInterface *blockDev, uint32_t device_sector_count, Stream &Serialx);
+	void compare_dump_hexbytes(const void *ptr, const uint8_t *compare_buf, int len);
+
+ private:
+	BlockDevice* m_dev;
+	print_t*m_pr;
+
+};
+ 
 #endif  // PFsLib_h

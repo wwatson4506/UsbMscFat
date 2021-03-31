@@ -46,6 +46,9 @@ class PFsExFatFormatter {
    * \return true for success or false for failure.
    */
   bool format(PFsVolume &partVol, uint8_t* secBuf, print_t* pr);
+  bool createExFatPartition(BlockDevice* dev, uint32_t startSector, uint32_t sectorCount, uint8_t* secBuf, print_t* pr);
+  uint8_t addExFatPartitionToMbr();
+  void dump_hexbytes(const void *ptr, int len);
 
  private:
  
@@ -79,6 +82,8 @@ class PFsExFatFormatter {
   uint32_t m_part_relativeSectors;
   uint32_t m_bytesPerCluster;
   uint8_t m_part;
+  uint32_t m_sectorCount;
+  uint32_t m_capacityMB;
   char volName[32];
   
 };
