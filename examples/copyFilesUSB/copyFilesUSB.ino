@@ -45,9 +45,12 @@ UsbFs msc1;
 UsbFs msc2;
 SdFs sdio;
 SdFs spi;
+
 // Create SdFat source and destination file pointers.
-FsFile file1;
-FsFile file2;
+PFsFile file1; // USB srcType
+PFsFile file2; // USB destType
+FsFile file3;  // SD srcType
+FsFile file4;   // SD destType
 
 // File to copy. This file is provided in the extras folder in ths library.
 // Change this to any other file you wish to copy.
@@ -87,7 +90,7 @@ bool sdCardAvailable(SdFs *sdCard) {
 // Copy a file from one drive to another.
 // Set 'stats' to true to display a progress bar,
 // copy speed and copy time. 
-int fileCopy(bool stats) {
+int fileCopy(bool srcType, bool destType, bool stats) {
     int br = 0, bw = 0;          // File read/write count
 	uint32_t bufferSize = 32*1024; // Buffer size. Play with this:)
 	uint8_t buffer[bufferSize];  // File copy buffer
@@ -104,22 +107,39 @@ int fileCopy(bool stats) {
 			if(!(cntr % 10)) Serial.printf("*");
 			if(!(cntr % 640)) Serial.printf("\n");
 		}
-        br = file1.read(buffer, sizeof(buffer));  // Read buffer size of source file
+        if(srcType)
+			br = file1.read(buffer, sizeof(buffer));  // Read buffer size of source file (USB Type)
+        else
+			br = file3.read(buffer, sizeof(buffer));  // Read buffer size of source file (SD Type)
+        
         if (br <= 0) {
 			copyError = br;
 			break; // Error or EOF
 		}
-        bw = file2.write(buffer, br); // Write it to the destination file
+        if(destType)
+			bw = file2.write(buffer, br); // Write it to the destination file (USB Type)
+        else
+			bw = file4.write(buffer, br); // Write it to the destination file (SD Type)
+        
         if (bw < br) {
 			copyError = bw; // Error or disk is full
 			break;
 		}
 		bytesRW += (uint32_t)bw;
     }
-	file2.sync(); // Flush write buffer.
+	if(destType)
+		file2.sync(); // Flush write buffer.
+    else
+    	file4.sync(); // Flush write buffer.
     // Close open files
-    file1.close(); // Source
-    file2.close(); // Destination
+	if(srcType)
+		file1.close(); // Source
+	else
+	    file3.close();
+    if(destType)
+		file2.close(); // Destination
+	else
+		file4.close(); // Destination
 	finish = (micros() - start); // Get total copy time.
     float MegaBytes = (bytesRW*1.0f)/(1.0f*finish);
 	if(stats) // If true, display time stats.
@@ -235,11 +255,12 @@ void loop(void) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(true, true, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
 			break;
+
 		case '2':
 			if(!driveAvailable(&msDrive2, &msc2)) {
 				Serial.printf("USB Drive 2 is not connected or not mountable\n");
@@ -258,11 +279,12 @@ void loop(void) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(true, true, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
 			break;
+
 		case '3':
 			if(!driveAvailable(&msDrive1, &msc1)) {
 				Serial.printf("USB Drive 1 is not connected or not mountable\n");
@@ -277,15 +299,16 @@ void loop(void) {
 				Serial.printf("\nERROR: could not open source file: %s\n",file2Copy);
 				break;
 			}
-			if(!file2.open(&sdio,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
+			if(!file4.open(&sdio,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(true, false, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
 			break;
+
 		case '4':
 			if(!driveAvailable(&msDrive2, &msc2)) {
 				Serial.printf("USB Drive 2 is not connected or not mountable\n");
@@ -300,11 +323,11 @@ void loop(void) {
 				Serial.printf("\nERROR: could not open source file: %s\n",file2Copy);
 				break;
 			}
-			if(!file2.open(&sdio,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
+			if(!file4.open(&sdio,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(true, false, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
@@ -323,11 +346,11 @@ void loop(void) {
 				Serial.printf("\nERROR: could not open source file: %s\n",file2Copy);
 				break;
 			}
-			if(!file2.open(&spi,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
+			if(!file4.open(&spi,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(true, false, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
@@ -346,11 +369,11 @@ void loop(void) {
 				Serial.printf("\nERROR: could not open source file: %s\n",file2Copy);
 				break;
 			}
-			if(!file2.open(&spi,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
+			if(!file4.open(&spi,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(true, false, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
@@ -365,15 +388,15 @@ void loop(void) {
 				break;
 			}
 			Serial.printf("\n7) Copying from SDIO card to External SD card\n");
-			if(!file1.open(&sdio,file2Copy, O_RDONLY)) {
+			if(!file3.open(&sdio,file2Copy, O_RDONLY)) {
 				Serial.printf("\nERROR: could not open source file: %s\n",file2Copy);
 				break;
 			}
-			if(!file2.open(&spi,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
+			if(!file4.open(&spi,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(false, false, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
@@ -388,15 +411,15 @@ void loop(void) {
 				break;
 			}
 			Serial.printf("\n8) Copying from External SD card to SDIO card\n");
-			if(!file1.open(&spi,file2Copy, O_RDONLY)) {
+			if(!file3.open(&spi,file2Copy, O_RDONLY)) {
 				Serial.printf("\nERROR: could not open source file: %s\n",file2Copy);
 				break;
 			}
-			if(!file2.open(&sdio,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
+			if(!file4.open(&sdio,file2Copy, O_WRONLY | O_CREAT | O_TRUNC)) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(false, false, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
@@ -411,7 +434,7 @@ void loop(void) {
 				break;
 			}
 			Serial.printf("\n9) Copying from SDIO card to USB drive 1 \n");
-			if(!file1.open(&sdio,file2Copy, O_RDONLY)) {
+			if(!file3.open(&sdio,file2Copy, O_RDONLY)) {
 				Serial.printf("\nERROR: could not open source file: %s\n",file2Copy);
 				break;
 			}
@@ -419,7 +442,7 @@ void loop(void) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(false, true, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
@@ -435,7 +458,7 @@ void loop(void) {
 			}
 			if(!sdCardAvailable(&sdio) || !driveAvailable(&msDrive2, &msc2)) break; // Is the drive available and mounted?
 			Serial.printf("\na) Copying from SDIO card to USB drive 2\n");
-			if(!file1.open(&sdio,file2Copy, O_RDONLY)) {
+			if(!file3.open(&sdio,file2Copy, O_RDONLY)) {
 				Serial.printf("\nERROR: could not open source file: %s\n",file2Copy);
 				break;
 			}
@@ -443,7 +466,7 @@ void loop(void) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(false, true, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
@@ -458,7 +481,7 @@ void loop(void) {
 				break;
 			}
 			Serial.printf("\nb) Copying from External SD card to USB drive 1 \n");
-			if(!file1.open(&spi,file2Copy, O_RDONLY)) {
+			if(!file3.open(&spi,file2Copy, O_RDONLY)) {
 				Serial.printf("\nERROR: could not open source file: %s\n",file2Copy);
 				break;
 			}
@@ -466,7 +489,7 @@ void loop(void) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(false, true, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
@@ -482,7 +505,7 @@ void loop(void) {
 			}
 			if(!sdCardAvailable(&spi) || !driveAvailable(&msDrive2, &msc2)) break; // Is the drive available and mounted?
 			Serial.printf("\nc) Copying from External SD card to USB drive 2\n");
-			if(!file1.open(&spi,file2Copy, O_RDONLY)) {
+			if(!file3.open(&spi,file2Copy, O_RDONLY)) {
 				Serial.printf("\nERROR: could not open source file: %s\n",file2Copy);
 				break;
 			}
@@ -490,7 +513,7 @@ void loop(void) {
 				Serial.printf("\nERROR: could not open destination file: %s\n",file2Copy);
 				break;
 			}
-			copyResult = fileCopy(true);
+			copyResult = fileCopy(false, true, true);
 			if(copyResult != 0) {
 				Serial.printf("File Copy Failed with code: %d\n",copyResult);
 			}
