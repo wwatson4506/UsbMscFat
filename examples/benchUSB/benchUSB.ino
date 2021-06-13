@@ -63,7 +63,7 @@ SdExFat sd;
 ExFile file;
 #elif SD_FAT_TYPE == 3
 UsbFs msc1;
-FsFile file;
+PFsFile file;
 //MscFile file;
 #else  // SD_FAT_TYPE
 #error Invalid SD_FAT_TYPE
