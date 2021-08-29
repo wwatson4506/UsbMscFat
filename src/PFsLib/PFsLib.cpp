@@ -1,7 +1,7 @@
 #include "PFsLib.h"
 
 //Set to 0 for debug info
-#define DBG_Print	1
+#define DBG_Print	0
 #if defined(DBG_Print)
 #define DBGPrintf Serial.printf
 #else
@@ -153,7 +153,7 @@ void PFsLib::InitializeDrive(BlockDeviceInterface *dev, uint8_t fat_type, print_
 }
 
 
-void PFsLib::formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive, bool g_exfat_dump_changed_sectors, Stream &Serialx)
+bool PFsLib::formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive, bool g_exfat_dump_changed_sectors, Stream &Serialx)
 {
   uint8_t  sectorBuffer[512];
 
@@ -163,7 +163,7 @@ void PFsLib::formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive, bo
     // 
     uint8_t buffer[512];
     MbrSector_t *mbr = (MbrSector_t *)buffer;
-    if (!partVol.blockDevice()->readSector(0, buffer)) return;
+    if (!partVol.blockDevice()->readSector(0, buffer)) return false;
     MbrPart_t *pt = &mbr->part[partVol.part() - 1];
 
     uint32_t sector = getLe32(pt->relativeSectors);
@@ -172,7 +172,7 @@ void PFsLib::formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive, bo
     uint8_t *bpb_area = (uint8_t*)malloc(512*24); 
     if (!bpb_area) {
       Serialx.println("Unable to allocate dump memory");
-      return;
+      return false;
     }
     // Lets just read in the top 24 sectors;
     uint8_t *sector_buffer = bpb_area;
@@ -221,8 +221,11 @@ void PFsLib::formatter(PFsVolume &partVol, uint8_t fat_type, bool dump_drive, bo
     }
     free(bpb_area); 
   }
-  else
+  else {
     Serialx.println("Cannot format an invalid partition");
+    return false;
+  }
+  return true;
 }
 
 

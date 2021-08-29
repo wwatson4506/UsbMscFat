@@ -208,7 +208,6 @@ void loop() {
       m = micros() - m;
       totalLatency += m;
       if (buf[BUF_SIZE-1] != '\n') {
-
         error("data check error");
       }
       if (skipLatency) {

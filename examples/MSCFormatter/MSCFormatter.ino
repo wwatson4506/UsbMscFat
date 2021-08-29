@@ -105,7 +105,7 @@ void processSDDrive()
     return;
   }
   pfsLIB.mbrDmp(sd.card(), (uint32_t)-1 , Serial);
-  PFsVolume partVol;
+//  PFsVolume partVol;
 
   for (uint8_t i = 0; i < 4; i++) {
   if (count_partVols == CNT_PARITIONS) return; // don't overrun

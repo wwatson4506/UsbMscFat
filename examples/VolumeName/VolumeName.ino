@@ -269,8 +269,6 @@ void dump_hexbytes(const void *ptr, int len)
   }
 }
 
-
-
 // Function to handle one MS Drive...
 void procesMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
 {
