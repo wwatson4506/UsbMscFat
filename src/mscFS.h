@@ -125,6 +125,24 @@ public:
 	virtual void rewindDirectory(void) {
 		mscfatfile.rewindDirectory();
 	}
+#ifdef FS_FILE_SUPPORT_DATES
+	// These will all return false as only some FS support it.
+	virtual bool getAccessDateTime(uint16_t* pdate, uint16_t* ptime) {
+		return mscfatfile.getAccessDateTime(pdate, ptime);
+	}
+	virtual bool getCreateDateTime(uint16_t* pdate, uint16_t* ptime) {
+		return mscfatfile.getCreateDateTime(pdate, ptime);
+	}
+	virtual bool getModifyDateTime(uint16_t* pdate, uint16_t* ptime) {
+		return mscfatfile.getModifyDateTime(pdate, ptime);
+	}
+	virtual bool timestamp(uint8_t flags, uint16_t year, uint8_t month, uint8_t day,
+               uint8_t hour, uint8_t minute, uint8_t second) {
+		return mscfatfile.timestamp(flags, year, month, day, hour, minute, second);
+		return false;
+	}
+#endif
+
 	using Print::write;
 private:
 	MSCFAT_FILE mscfatfile;
@@ -143,7 +161,6 @@ public:
 	File open(const char *filepath, uint8_t mode = FILE_READ) {
 		oflag_t flags = O_READ;
 		if (mode == FILE_WRITE) {flags = O_RDWR | O_CREAT | O_AT_END; _cached_usedSize_valid = false; }
-
 		else if (mode == FILE_WRITE_BEGIN) {flags = O_RDWR | O_CREAT;  _cached_usedSize_valid = false; }
 		MSCFAT_FILE file = mscfs.open(filepath, flags);
 		if (file) return File(new MSCFile(file));

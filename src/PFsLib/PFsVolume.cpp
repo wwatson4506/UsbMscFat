@@ -76,7 +76,6 @@ bool PFsVolume::getVolumeLabel(char *volume_label, size_t cb)
   *volume_label = 0; // make sure if we fail later we return empty string as well.
   uint8_t fat_type = fatType();
   uint32_t root_dir;
-
   // Lets go hard core here.
   if (m_fVol)
   {

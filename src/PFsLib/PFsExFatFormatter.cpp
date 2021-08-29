@@ -414,7 +414,7 @@ bool PFsExFatFormatter::createExFatPartition(BlockDevice* dev, uint32_t startSec
 #endif  //  !PRINT_FORMAT_PROGRESS
   checksum = 0;
 
-  MbrSector_t mbr;
+  //MbrSector_t mbr;
   ExFatPbs_t* pbs;
   DirUpcase_t* dup;
   DirBitmap_t* dbm;
