@@ -38,15 +38,24 @@ class PFsLib : public PFsFatFormatter, public PFsExFatFormatter
  public:
 	bool deletePartition(BlockDeviceInterface *blockDev, uint8_t part, print_t* pr, Stream &Serialx); 
 	void InitializeDrive(BlockDeviceInterface *dev, uint8_t fat_type, print_t* pr);
-	bool formatter(PFsVolume &partVol, uint8_t fat_type=0, bool dump_drive=false, bool g_exfat_dump_changed_sectors=false, Stream &Serialx=Serial);
+	bool formatter(PFsVolume &partVol, uint8_t fat_type=0, bool dump_drive=false, bool g_exfat_dump_changed_sectors=false, Print &Serialx=Serial);
 	void dump_hexbytes(const void *ptr, int len);
 	void print_partion_info(PFsVolume &partVol, Stream &Serialx);
 	uint32_t mbrDmp(BlockDeviceInterface *blockDev, uint32_t device_sector_count, Stream &Serialx);
+   uint32_t gptDmp(BlockDeviceInterface *blockDev, Stream &Serialx);
 	void compare_dump_hexbytes(const void *ptr, const uint8_t *compare_buf, int len);
 
+   typedef enum {INVALID_VOL=0, MBR_VOL, EXT_VOL, GPT_VOL, OTHER_VOL} voltype_t; // what type of volume did the mapping return
+   voltype_t getPartitionInfo(BlockDeviceInterface *blockDev, uint8_t part,  Print *pserial, uint8_t *secBuf,
+      uint32_t &firstLBA, uint32_t &sectorCount, uint32_t &mbrLBA, uint8_t &mbrPart);
+
+   // Sort of test function for the one above.
+   void listPartitions(BlockDeviceInterface *blockDev, Print &Serialx);
+
  private:
+    void extgptDmp(BlockDeviceInterface *blockDev, MbrSector_t *mbr, uint8_t ip, Stream &Serialx);
 	BlockDevice* m_dev;
-	print_t*m_pr;
+	print_t* m_pr;
 
 };
  

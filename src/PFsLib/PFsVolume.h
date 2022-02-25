@@ -30,9 +30,9 @@
  */
 #include "PFsNew.h"
 #include <SdFat.h>
-#include "USBMSCDevice.h"
 //#include "../FatLib/FatLib.h"
 //#include "../ExFatLib/ExFatLib.h"
+#include "msc/USBMSCDevice.h"
 
 class PFsFile;
 /**

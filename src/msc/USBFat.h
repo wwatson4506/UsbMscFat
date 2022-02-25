@@ -30,7 +30,8 @@
  * \brief main UsbFs include file.
  */
 #include "USBHost_t36.h"
-#include "USBmsc.h"
+#include <msDevice.h>
+#include "msc/USBmsc.h"
 #include "PFsLib/PFsLib.h"
 
 //------------------------------------------------------------------------------
@@ -47,22 +48,20 @@ class UsbBase : public Vol {
   //----------------------------------------------------------------------------
   /** Initialize USB drive and file system.
    *
-   * \param[in] msController drive.
+   * \param[in] msDevice drive.
    * \return true for success or false for failure.
    */
-  bool begin(msController *pdrv, bool setCwv = true, uint8_t part = 1) {
+  bool begin(msDevice *pdrv, bool setCwv = true, uint8_t part = 1) {
 	return mscBegin(pdrv, setCwv, part);
   }
   //----------------------------------------------------------------------------
   /** Initialize USB drive and file system for USB Drive.
    *
-   * \param[in] msController drive configuration.
+   * \param[in] msDevice drive configuration.
    * \return true for success or false for failure.
    */
-  bool mscBegin(msController *pDrive, bool setCwv = true, uint8_t part = 1) {
-//    Serial.printf("UsbBase::mscBegin called %x %x %d\n", (uint32_t)pDrive, setCwv, part);
+  bool mscBegin(msDevice *pDrive, bool setCwv = true, uint8_t part = 1) {
     if (!usbDriveBegin(pDrive)) return false;
-//    Serial.println("    After usbDriveBegin");
     return Vol::begin((USBMSCDevice*)m_USBmscDrive, setCwv, part);
   }
   //----------------------------------------------------------------------------
@@ -74,7 +73,7 @@ class UsbBase : public Vol {
    * \param[in] Pointer to an instance of msc.
    * \return true for success or false for failure.
    */
-  bool usbDriveBegin(msController *pDrive) {
+  bool usbDriveBegin(msDevice *pDrive) {
     m_USBmscDrive = m_USBmscFactory.newMSCDevice(pDrive);
 	thisMscDrive = pDrive;
     return m_USBmscDrive && !m_USBmscDrive->errorCode();
@@ -308,7 +307,7 @@ class UsbBase : public Vol {
  private:
   mscDevice*  m_USBmscDrive;
   USBmscFactory m_USBmscFactory;
-  msController *thisMscDrive;
+  msDevice *thisMscDrive;
 };
 //------------------------------------------------------------------------------
 /**

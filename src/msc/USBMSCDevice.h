@@ -28,8 +28,9 @@
 //#include "../common/SysCall.h"
 
 //#ifdef HAS_USB_MSC_CLASS
-#include "USBmscInterface.h"
+#include "msc/USBmscInterface.h"
 #include "USBHost_t36.h"
+#include "msDevice.h"
 
 /**
  * \class USBMSCDevice
@@ -41,7 +42,7 @@ class USBMSCDevice : public USBmscInterface {
    * \param[in] Pointer to an instance of msc.
    * \return true for success or false for failure.
    */
-  bool begin(msController *pDrive);
+  bool begin(msDevice *pDrive);
   uint32_t sectorCount();
   /**
    * \return code for the last error. See USBmscInfo.h for a list of error codes.
@@ -133,7 +134,7 @@ class USBMSCDevice : public USBmscInterface {
 
 
 private:
-  msController *thisDrive;
+  msDevice *thisDrive;
 };
 //#endif // HAS_USB_MSC_CLASS
 #endif  // USBmscDevice_h

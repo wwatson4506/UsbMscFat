@@ -27,8 +27,8 @@ USBHub hub4(myusb);
 // Mutiple  USB drives can be used. Hot plugging is supported. There is a slight
 // delay after a USB MSC device is plugged in. This is waiting for initialization
 // but after it is initialized there should be no delay.
-msController msDrive1(myusb);
-msController msDrive2(myusb);
+msDevice msDrive1(myusb);
+msDevice msDrive2(myusb);
 
 const uint8_t SD_CS_PIN = 10;
 
@@ -58,7 +58,7 @@ const char *file2Copy = "32MEGfile.dat";
 
 //------------------------------------------------------------------------------
 // Check for a connected USB drive and try to mount if not mounted.
-bool driveAvailable(msController *pDrive,UsbFs *mscVol) {
+bool driveAvailable(msDevice *pDrive,UsbFs *mscVol) {
 	if(pDrive->checkConnectedInitialized()) {
 		return false; // No USB Drive connected, give up!
 	}

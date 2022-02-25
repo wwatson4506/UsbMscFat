@@ -27,7 +27,7 @@
 
 #ifndef USBmscInterface_h
 #define USBmscInterface_h
-#include "USBmscInfo.h"
+#include "msc/USBmscInfo.h"
 /**
  * \class USBmscInterface
  * \brief Abstract interface for a USB Mass Storage Device.

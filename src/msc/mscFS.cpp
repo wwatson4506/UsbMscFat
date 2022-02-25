@@ -21,6 +21,6 @@
  */
 
 #include <Arduino.h>
-#include <mscFS.h>
+#include "msc/mscFS.h"
 
-MSCClass MSC;
+//MSCClass MSC;

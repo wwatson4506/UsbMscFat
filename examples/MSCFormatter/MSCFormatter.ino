@@ -20,7 +20,7 @@ uint8_t partVols_drive_index[CNT_PARITIONS];
 uint8_t count_partVols = 0;
   
 #define CNT_MSDRIVES 3
-msController msDrives[CNT_MSDRIVES](myusb);
+msDevice msDrives[CNT_MSDRIVES](myusb);
 UsbFs msc[CNT_MSDRIVES];
 bool g_exfat_dump_changed_sectors = false;
 
@@ -63,7 +63,7 @@ void dump_hexbytes(const void *ptr, int len)
 //----------------------------------------------------------------
 
 // Function to handle one MS Drive...
-void processMSDrive(uint8_t drive_number, msController &msDrive, UsbFs &msc)
+void processMSDrive(uint8_t drive_number, msDevice &msDrive, UsbFs &msc)
 {
   Serial.printf("Initialize USB drive...");
   //cmsReport = 0;

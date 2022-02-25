@@ -16,8 +16,8 @@ USBHub hub4(myusb);
 // Mutiple  USB drives can be used. Hot plugging is supported. There is a slight
 // delay after a USB MSC device is plugged in. This is waiting for initialization
 // but after it is initialized ther should be no delay.
-msController msDrive1(myusb);
-msController msDrive2(myusb);
+msDevice msDrive1(myusb);
+msDevice msDrive2(myusb);
 
 // SD_FAT_TYPE = 0 for SdFat/File as defined in SdFatConfig.h,
 // 1 for FAT16/FAT32, 2 for exFAT, 3 for FAT16/FAT32 and exFAT.
