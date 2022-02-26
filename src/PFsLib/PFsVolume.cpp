@@ -317,41 +317,50 @@ typedef struct {
   uint32_t free;
   //uint32_t not_free;
   uint32_t todo;
-  uint32_t clusters_per_sector;
-  uint32_t sectors_left_in_call;
+//  uint32_t clusters_per_sector;
+//  uint32_t sectors_left_in_call;
 } _gfcc_t;
 
 
-static void _getfreeclustercountCB(uint32_t token, uint8_t *buffer) 
+static void _getfreeclustercountCB_fat16(uint32_t token, uint8_t *buffer) 
 {
   //digitalWriteFast(1, HIGH);
 //  Serial.print("&");
   _gfcc_t *gfcc = (_gfcc_t *)token;
-  uint16_t cnt = gfcc->clusters_per_sector;
+  uint16_t cnt = 512/2;
   if (cnt > gfcc->todo) cnt = gfcc->todo;
   gfcc->todo -= cnt; // update count here...
-  gfcc->sectors_left_in_call--;
-  if (gfcc->clusters_per_sector == 512/2) {
-    // fat16
-    uint16_t *fat16 = (uint16_t *)buffer;
-    while (cnt-- ) {
-      if (*fat16++ == 0) gfcc->free++;
-    }
-  } else {
-    uint32_t *fat32 = (uint32_t *)buffer;
-    while (cnt-- ) {
-      if (*fat32++ == 0) gfcc->free++;
-      //else gfcc->not_free++;
-    }
+  //gfcc->sectors_left_in_call--;
+  // fat16
+  uint16_t *fat16 = (uint16_t *)buffer;
+  while (cnt-- ) {
+    if (*fat16++ == 0) gfcc->free++;
   }
 
   //digitalWriteFast(1, LOW);
 }
 
+static void _getfreeclustercountCB_fat32(uint32_t token, uint8_t *buffer) 
+{
+  //digitalWriteFast(1, HIGH);
+//  Serial.print("&");
+  _gfcc_t *gfcc = (_gfcc_t *)token;
+  uint16_t cnt = 512/4;
+  if (cnt > gfcc->todo) cnt = gfcc->todo;
+  gfcc->todo -= cnt; // update count here...
+  uint32_t *fat32 = (uint32_t *)buffer;
+  while (cnt-- ) {
+    if (*fat32++ == 0) gfcc->free++;
+    //else gfcc->not_free++;
+  }
+}
+
+
 //-------------------------------------------------------------------------------------------------
 uint32_t PFsVolume::freeClusterCount()  {
   // For XVolume lets let the original code do it.
 //  Serial.println("PFsVolume::freeClusterCount() called");
+  void (*callback)(uint32_t, uint8_t *);
   if (m_xVol) return m_xVol->freeClusterCount();
 
   if (!m_fVol) return 0;
@@ -365,40 +374,25 @@ uint32_t PFsVolume::freeClusterCount()  {
 
   switch (m_fVol->fatType()) {
     default: return 0;
-    case FAT_TYPE_FAT16: gfcc.clusters_per_sector = 512/2; break;
-    case FAT_TYPE_FAT32: gfcc.clusters_per_sector = 512/4; break;
+    case FAT_TYPE_FAT16: callback = &_getfreeclustercountCB_fat16; break;
+    case FAT_TYPE_FAT32: callback = &_getfreeclustercountCB_fat32; break;
   }
   gfcc.todo = m_fVol->clusterCount() + 2;
-#if 0    
-    Serial.printf("###PFsVolume::freeClusterCount: FT:%u\n", m_fVol->fatType());
-    Serial.printf("    m_sectorsPerCluster:%u\n", m_fVol->sectorsPerCluster());
-    //Serial.printf("    m_clusterSectorMask:%u\n", m_fVol->clusterSectorMask());
-    Serial.printf("    m_sectorsPerClusterShift:%u\n", m_fVol->sectorsPerClusterShift());
-    Serial.printf("    m_rootDirEntryCount:%u\n", m_fVol->rootDirEntryCount());
-    //Serial.printf("    m_allocSearchStart:%u\n", m_fVol->allocSearchStart());
-    Serial.printf("    m_sectorsPerFat:%u\n", m_fVol->sectorsPerFat());
-    Serial.printf("    m_dataStartSector:%u\n", m_fVol->dataStartSector());
-    Serial.printf("    m_fatStartSector:%u\n", m_fVol->fatStartSector());
-    //Serial.printf("    m_lastCluster:%u\n", m_fVol->lastCluster());
-    Serial.printf("    m_rootDirStart:%u\n", m_fVol->rootDirStart());
-    Serial.printf("    m_bytesPerSector:%u\n", m_fVol->bytesPerSector());
-#endif
 
 //  digitalWriteFast(0, HIGH);
 //  Serial.println("    Using readSectorswithCB");
-  #define CNT_FATSECTORS_PER_CALL 256
+  #define CNT_FATSECTORS_PER_CALL 1024
   uint32_t first_sector = m_fVol->fatStartSector();
   uint32_t sectors_left = m_fVol->sectorsPerFat();
   bool succeeded = true;
 
   while (sectors_left) {
-    uint32_t sectors_to_write = (sectors_left < CNT_FATSECTORS_PER_CALL)? sectors_left : CNT_FATSECTORS_PER_CALL;
-    gfcc.sectors_left_in_call = sectors_to_write;
+    uint32_t sectors_to_read = (sectors_left < CNT_FATSECTORS_PER_CALL)? sectors_left : CNT_FATSECTORS_PER_CALL;
 
-    succeeded = m_usmsci->readSectorsWithCB(first_sector,sectors_to_write, &_getfreeclustercountCB, (uint32_t)&gfcc);
+    succeeded = m_usmsci->readSectorsWithCB(first_sector, sectors_to_read, callback, (uint32_t)&gfcc);
     if (!succeeded) break;
-    sectors_left -= sectors_to_write;
-    first_sector += sectors_to_write;
+    sectors_left -= sectors_to_read;
+    first_sector += sectors_to_read;
   }
 
 //  digitalWriteFast(0, LOW);

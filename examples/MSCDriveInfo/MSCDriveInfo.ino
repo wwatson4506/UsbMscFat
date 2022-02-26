@@ -15,8 +15,8 @@ USBHub hub4(myusb);
 // Mutiple  USB drives can be used. Hot plugging is supported. There is a slight
 // delay after a USB MSC device is plugged in. This is waiting for initialization
 // but after it is initialized ther should be no delay.
-msController msDrive1(myusb);
-msController msDrive2(myusb);
+msDevice msDrive1(myusb);
+msDevice msDrive2(myusb);
 
 // set up variables using the mscFS utility library functions:
 UsbFs myDrive1;
@@ -25,7 +25,7 @@ UsbFs myDrive2;
 uint32_t volumesize;
 
 // Show USB drive information for the selected USB drive.
-int showUSBDriveInfo(msController  *drive) {
+int showUSBDriveInfo(msDevice  *drive) {
 	// Print USB drive information.
 	Serial.printf(F("   connected %d\n"),drive->msDriveInfo.connected);
 	Serial.printf(F("   initialized %d\n"),drive->msDriveInfo.initialized);

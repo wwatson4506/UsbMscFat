@@ -30,18 +30,19 @@
 #include <stdint.h>
 #include "SdFat.h"
 #include "USBHost_t36.h"
-#include "mscSenseKeyList.h"
-#include "mscASCList.h"
+#include "msDevice.h"
+#include "msc/mscSenseKeyList.h"
+#include "msc/mscASCList.h"
 
 const char *decodeSenseKey(uint8_t senseKey);
 const char *decodeAscAscq(uint8_t asc, uint8_t ascq);
 
-void printMscAscError(print_t* pr, msController *pDrive);
+void printMscAscError(print_t* pr, msDevice *pDrive);
 
 const uint8_t SD_CARD_TYPE_USB = 4;
 //-----------------------------------------------------------------------------
 
-inline uint32_t USBmscCapacity(msController *pDrv) {
+inline uint32_t USBmscCapacity(msDevice *pDrv) {
 	return (pDrv->msDriveInfo.capacity.Blocks); 
 }
 

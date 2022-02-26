@@ -24,7 +24,7 @@
  */
 #ifndef PFsFatFormatter_h
 #define PFsFatFormatter_h
-#include "mscFS.h"
+#include "msc/mscFS.h"
 #include <SdFat.h>
 //#include "../common/SysCall.h"
 //#include "../common/BlockDevice.h"
@@ -57,6 +57,17 @@ class PFsFatFormatter {
   bool writeNewMbr();
   uint8_t addPartitionToMbr();  
   void lbaToMbrChs(uint8_t* chs, uint32_t capacityMB, uint32_t lba);
+    // debug support
+  bool writeSector(uint32_t sector, const uint8_t* src);
+  void setWriteSandBox(uint32_t min_sector, uint32_t max_sector) {
+    m_minSector = min_sector;
+    m_maxSector = max_sector;
+  }
+
+  uint32_t m_minSector = 0;
+  uint32_t m_maxSector = (uint32_t)-1;
+  
+
   uint32_t m_capacityMB;
   uint32_t m_dataStart;
   uint32_t m_fatSize;
@@ -71,6 +82,8 @@ class PFsFatFormatter {
   uint8_t m_partType;
   uint8_t m_sectorsPerCluster;
   uint8_t m_part;
+  uint32_t m_mbrLBA = 0;
+  uint8_t m_mbrPart;
   uint32_t m_part_relativeSectors;
   char volName[32];
 };

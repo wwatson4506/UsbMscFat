@@ -23,8 +23,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "USBMSCDevice.h"
-#include "USBmscInfo.h"
+#include "msc/USBMSCDevice.h"
+#include "msc/USBmscInfo.h"
 
 //#ifdef HAS_USB_MSC_CLASS
 const uint32_t BUSY_TIMEOUT_MICROS = 1000000;
@@ -36,7 +36,7 @@ static bool m_initDone = false;
 static bool (*m_busyFcn)() = 0;
 static uint8_t m_errorCode = MS_NO_MEDIA_ERR;
 static uint32_t m_errorLine = 0;
-//static msController *thisDrive = nullptr;
+//static msDevice *thisDrive = nullptr;
 bool isBusyRead();
 bool isBusyWrite();
 
@@ -133,7 +133,7 @@ uint32_t USBMSCDevice::sectorCount() {
 //==============================================================================
 // Start of USBMSCDevice member functions.
 //==============================================================================
-bool USBMSCDevice::begin(msController *pDrive) {
+bool USBMSCDevice::begin(msDevice *pDrive) {
 	m_errorCode = MS_CBW_PASS;
 	thisDrive = pDrive;
 	pDrive->mscInit(); // Do initial init of each instance of a MSC object.
@@ -152,7 +152,7 @@ bool USBMSCDevice::readSector(uint32_t sector, uint8_t* dst) {
 //------------------------------------------------------------------------------
 bool USBMSCDevice::readSectors(uint32_t sector, uint8_t* dst, size_t n) {
 	// Check if device is plugged in and initialized
-	if((m_errorCode = ((msController *)thisDrive)->checkConnectedInitialized()) != MS_CBW_PASS) {
+	if((m_errorCode = ((msDevice *)thisDrive)->checkConnectedInitialized()) != MS_CBW_PASS) {
 		return false;
 	}
 	m_errorCode = thisDrive->msReadBlocks(sector, n,
@@ -166,7 +166,7 @@ bool USBMSCDevice::readSectors(uint32_t sector, uint8_t* dst, size_t n) {
 //------------------------------------------------------------------------------
 bool USBMSCDevice::readSectorsWithCB(uint32_t sector, size_t ns, void (*callback)(uint32_t, uint8_t *), uint32_t token) {
   // Check if device is plugged in and initialized
-  if((m_errorCode = ((msController *)thisDrive)->checkConnectedInitialized()) != MS_CBW_PASS) {
+  if((m_errorCode = ((msDevice *)thisDrive)->checkConnectedInitialized()) != MS_CBW_PASS) {
     return false;
   }
   m_errorCode = thisDrive->msReadSectorsWithCB(sector, ns, callback, token);
@@ -185,7 +185,7 @@ bool USBMSCDevice::writeSector(uint32_t sector, const uint8_t* src) {
 //------------------------------------------------------------------------------
 bool USBMSCDevice::writeSectors(uint32_t sector, const uint8_t* src, size_t n) {
 	// Check if device is plugged in and initialized
-	if((m_errorCode = ((msController *)thisDrive)->checkConnectedInitialized()) != MS_CBW_PASS) {
+	if((m_errorCode = ((msDevice *)thisDrive)->checkConnectedInitialized()) != MS_CBW_PASS) {
 		return false;
 	}
 	m_errorCode = thisDrive->msWriteBlocks(sector, n,

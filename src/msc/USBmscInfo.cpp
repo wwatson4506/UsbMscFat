@@ -25,7 +25,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "USBmscInfo.h"
+#include "msc/USBmscInfo.h"
 
 const char *decodeSenseKey(uint8_t senseKey) {
 	static char msg[64];
@@ -64,7 +64,7 @@ const char *decodeAscAscq(uint8_t asc, uint8_t ascq) {
 }
 
 //------------------------------------------------------------------------------
-void printMscAscError(print_t* pr, msController *pDrive) {
+void printMscAscError(print_t* pr, msDevice *pDrive) {
 		Serial.printf(" --> Type: %s Cause: %s\n",
 		decodeSenseKey(pDrive->msSense.SenseKey),
 		decodeAscAscq(pDrive->msSense.AdditionalSenseCode,

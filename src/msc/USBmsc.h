@@ -27,7 +27,8 @@
 #ifndef USBmsc_h
 #define USBmsc_h
 
-#include "USBMSCDevice.h"
+#include "msc/USBMSCDevice.h"
+#include "msDevice.h"
 typedef USBmscInterface mscDevice;
 /**
  * \class USBmscFactory
@@ -35,7 +36,7 @@ typedef USBmscInterface mscDevice;
  */
 class USBmscFactory {
  public:
-  mscDevice* newMSCDevice(msController *pDrive) {
+  mscDevice* newMSCDevice(msDevice *pDrive) {
     m_USBmscDrv.begin(pDrive);
     return &m_USBmscDrv;
   }

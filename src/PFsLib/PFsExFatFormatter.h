@@ -24,7 +24,7 @@
  */
 #ifndef PFsExFatFormatter_h
 #define PFsExFatFormatter_h
-#include "mscFS.h"
+#include "msc/mscFS.h"
 #include <SdFat.h>
 
 //#include "ExFatConfig.h"
@@ -57,6 +57,16 @@ class PFsExFatFormatter {
   bool writeUpcase(uint32_t sector);
   bool writeUpcaseByte(uint8_t b);
   bool writeUpcaseUnicode(uint16_t unicode);
+
+  // debug support
+  bool writeSector(uint32_t sector, const uint8_t* src);
+  void setWriteSandBox(uint32_t min_sector, uint32_t max_sector) {
+    m_minSector = min_sector;
+    m_maxSector = max_sector;
+  }
+
+  uint32_t m_minSector = 0;
+  uint32_t m_maxSector = (uint32_t)-1;
   
   uint32_t m_upcaseSector;
   uint32_t m_upcaseChecksum;
@@ -76,7 +86,7 @@ class PFsExFatFormatter {
   uint32_t sector;
   uint32_t sectorsPerCluster;
   uint32_t volumeLength;
-  uint32_t sectorCount;
+  //uint32_t sectorCount;
   uint8_t sectorsPerClusterShift;
   uint32_t m_relativeSectors;
   uint32_t m_part_relativeSectors;
@@ -84,6 +94,8 @@ class PFsExFatFormatter {
   uint8_t m_part;
   uint32_t m_sectorCount;
   uint32_t m_capacityMB;
+  uint8_t m_mbrPart;
+  uint32_t m_mbrLBA = 0;
   char volName[32];
   
 };
