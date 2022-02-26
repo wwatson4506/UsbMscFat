@@ -26,7 +26,7 @@
 
 #include <Arduino.h>
 #include "USBHost_t36.h"  // Read this header first for key info
-#include "MSDevice.h"
+#include "msDevice.h"
 
 #define print   USBHost::print_
 #define println USBHost::println_
