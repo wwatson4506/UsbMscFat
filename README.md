@@ -1,5 +1,11 @@
 # UsbMscFat Library
 
+#**********************************************************************************
+# NOTE: This Library is OUTDATED !!!
+#Please Use the examples in the latest USBHost_t36 stable library for the Teensy.
+#Teensyduino 1.57.
+#**********************************************************************************
+
 This Teensy 3.6/4.0/4.1 library allows use of FS and MSC with SdFat.
 
 You will need Arduino 1.8.13 and TeensyDuino 1.54 Beta 6.
